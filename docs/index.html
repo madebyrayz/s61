@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MAS S61</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: hsl(0 0% 3.9%);
+        --fg: hsl(0 0% 98%);
+        --muted: hsl(0 0% 63.9%);
+        --border: hsl(0 0% 14.9%);
+        --accent: hsl(0 0% 14.9%);
+      }
+      * { box-sizing: border-box; margin: 0; }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font-family: "TWK Lausanne", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+        font-size: 15px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+        padding: 48px 24px;
+      }
+      main { max-width: 640px; margin: 0 auto; }
+      h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.012em; }
+      .sub { color: var(--muted); margin-top: 4px; }
+      ol { list-style: none; padding: 0; margin-top: 40px; display: flex; flex-direction: column; gap: 12px; }
+      li a {
+        display: block;
+        padding: 16px 18px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        color: inherit;
+        text-decoration: none;
+        transition: background 0.15s;
+      }
+      li a:hover { background: var(--accent); }
+      .name { font-weight: 500; }
+      .note { color: var(--muted); font-size: 13px; margin-top: 2px; }
+      footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
+      footer a { color: inherit; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>MAS S61</h1>
+      <p class="sub">Experiments, one folder each.</p>
+      <ol>
+        <li>
+          <a href="subdivision-sculptor/">
+            <div class="name">Homework 1 — Subdivision Sculptor</div>
+            <div class="note">Recursion through form, after Hansmeyer's <i>Design by Subdivision</i>. With a live camera mode.</div>
+          </a>
+        </li>
+      </ol>
+      <footer>Ray Zhang · <a href="https://github.com/madebyrayz/s61">source</a></footer>
+    </main>
+  </body>
+</html>
