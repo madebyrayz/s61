@@ -16,11 +16,18 @@ Week 2 · Input systems. A drawing tool where every new stroke is sent through a
 | total turning | `theta_zz` |
 | mostly horizontal / vertical | `kick` `"Z"` / `"X"` |
 
-Tap `k` of the returned map acts on the stroke drawn `k` strokes ago (site 0 is the new stroke).
-Magnitude sets how far it moves, phase sets its wave and rotation, and a negative tap
-inverts, reverses or rotates it. Strokes older than the chain inherit the far end, fading.
-Holding **Witness** (W) shows the strokes as originally drawn, and every stroke you look at
-is rewritten more strongly by the next echo.
+Tap `k` of the returned map reaches the stroke drawn `k` strokes ago (site 0 is the new stroke;
+strokes further back than 7 are settled). An echo never erases: each tap adds one new contour to that
+stroke, derived from its latest contour by a quantized move. Magnitude sets an offset of whole 5 px units,
+the tap's sign sets which side, and its phase sets a rotation in 1.5° steps about the point where the
+hand began plus a small scale. Repeated echoes build bands, fans and rings.
+
+Media: **graphite** (hairlines on paper, negative-tap contours in a second ink) and **light**
+(additive light on black, each contour coloured by how many echoes ago it was laid down).
+Holding **Witness** (W) shows the strokes as originally drawn (dotted), and every stroke you look at
+drifts further on the next echo.
+
+Run locally: `npx http-server docs` and open `/retrocausal-ink/`.
 
 ## Run the real echo
 

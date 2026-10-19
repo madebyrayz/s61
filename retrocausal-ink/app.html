@@ -4,7 +4,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@1,6..72,400;1,6..72,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
 <style>
-/* Layout: one full-bleed sheet of paper; a quiet header top-left, the last echo top-right, controls along the bottom edge. */
+/* Layout: one full-bleed sheet; a quiet header top-left, the last echo top-right, controls along the bottom edge.
+   Two media: "graphite" (hairlines on paper, follows the theme) and "light" (additive light on black, always dark). */
 :root {
   --paper: #eceef2;
   --ink: #161a2b;
@@ -12,7 +13,6 @@
   --rule: #cfd3dc;
   --wave: #3346c9;
   --neg: #b42a6c;
-  --witness: #8c93a3;
   --panel: rgba(236, 238, 242, 0.86);
   --f-display: "Newsreader", "Iowan Old Style", Georgia, serif;
   --f-body: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
@@ -21,25 +21,28 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --paper: #0f1117; --ink: #e4e6ee; --muted: #8b92a4; --rule: #262a36;
-    --wave: #8394ff; --neg: #ff6fae; --witness: #5d6475; --panel: rgba(15, 17, 23, 0.84);
+    --wave: #8394ff; --neg: #ff6fae; --panel: rgba(15, 17, 23, 0.84);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --paper: #0f1117; --ink: #e4e6ee; --muted: #8b92a4; --rule: #262a36;
-  --wave: #8394ff; --neg: #ff6fae; --witness: #5d6475; --panel: rgba(15, 17, 23, 0.84);
+  --wave: #8394ff; --neg: #ff6fae; --panel: rgba(15, 17, 23, 0.84);
+  color-scheme: dark;
+}
+body[data-medium="light"] {
+  --paper: #050608; --ink: #eef0f6; --muted: #858b9b; --rule: #22252e;
+  --wave: #8fa2ff; --neg: #ff7ab8; --panel: rgba(5, 6, 8, 0.8);
   color-scheme: dark;
 }
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--paper); color: var(--ink);
   font-family: var(--f-body); font-size: 14px; overflow: hidden;
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: antialiased; transition: background-color 0.4s;
 }
 #sheet { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; display: block; }
-.hud {
-  position: fixed; pointer-events: none; display: flex; flex-direction: column; gap: 6px;
-}
+.hud { position: fixed; pointer-events: none; display: flex; flex-direction: column; gap: 6px; }
 .hud > * { pointer-events: auto; }
 #head {
   top: calc(env(safe-area-inset-top, 0px) + 18px);
@@ -49,11 +52,8 @@ h1 {
   margin: 0; font-family: var(--f-display); font-style: italic; font-weight: 500;
   font-size: 30px; line-height: 1; letter-spacing: -0.01em; text-wrap: balance;
 }
-.lede { margin: 0; color: var(--muted); line-height: 1.45; max-width: 34ch; }
-#status {
-  font-family: var(--f-mono); font-size: 12px; color: var(--ink);
-  display: flex; align-items: center; gap: 8px; min-height: 18px;
-}
+.lede { margin: 0; color: var(--muted); line-height: 1.45; max-width: 36ch; }
+#status { font-family: var(--f-mono); font-size: 12px; display: flex; align-items: center; gap: 8px; min-height: 18px; }
 #status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rule); flex: none; }
 #status.busy .dot { background: var(--wave); animation: pulse 0.9s ease-in-out infinite; }
 #status.err .dot { background: var(--neg); }
@@ -65,10 +65,7 @@ h1 {
   width: 236px; background: var(--panel); border: 1px solid var(--rule);
   padding: 10px 12px 8px; backdrop-filter: blur(6px);
 }
-.label {
-  font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--muted);
-}
+.label { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 #echo svg { display: block; width: 100%; height: 86px; }
 #echo .src { font-family: var(--f-mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
@@ -80,8 +77,7 @@ h1 {
 }
 button, select, input[type="text"] {
   font: 500 12.5px/1 var(--f-body); color: var(--ink); background: var(--panel);
-  border: 1px solid var(--rule); padding: 8px 11px; border-radius: 2px;
-  backdrop-filter: blur(6px);
+  border: 1px solid var(--rule); padding: 8px 11px; border-radius: 2px; backdrop-filter: blur(6px);
 }
 button { cursor: pointer; }
 button:hover, select:hover { border-color: var(--muted); }
@@ -102,15 +98,15 @@ input[type="range"] { accent-color: var(--wave); }
   #proxyUrl { width: 150px; }
   .spacer { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { #status.busy .dot { animation: none; } }
+@media (prefers-reduced-motion: reduce) { #status.busy .dot { animation: none; } body { transition: none; } }
 </style>
 
 <canvas id="sheet" aria-label="Drawing surface. Draw with mouse, pen or finger."></canvas>
 
 <header id="head" class="hud">
   <h1>Retrocausal Ink</h1>
-  <p class="lede">Every new stroke is sent back through a quantum echo. When it returns, it rewrites the strokes you made before it.</p>
-  <div id="status" role="status"><span class="dot"></span><span id="statusText">Five sample strokes. Draw anything.</span></div>
+  <p class="lede">Each new stroke sends a quantum echo back through the last seven. Every echo leaves one more contour on the strokes it reaches, so the past grows in layers.</p>
+  <div id="status" role="status"><span class="dot"></span><span id="statusText">Four sample strokes with a few echoes on them. Draw anything.</span></div>
 </header>
 
 <aside id="echo" class="hud" aria-label="Last echo">
@@ -122,11 +118,10 @@ input[type="range"] { accent-color: var(--wave); }
 <nav id="bar" class="hud" aria-label="Controls">
   <button id="witnessBtn" aria-pressed="false" title="Hold to see what you actually drew">Witness <kbd>hold W</kbd></button>
   <div class="field">
-    <label class="label" for="negMode">Negative tap</label>
-    <select id="negMode">
-      <option value="invert">invert</option>
-      <option value="reverse">reverse</option>
-      <option value="rotate">rotate</option>
+    <label class="label" for="medium">Medium</label>
+    <select id="medium">
+      <option value="graphite">graphite</option>
+      <option value="light">light</option>
     </select>
   </div>
   <div class="field">
@@ -142,6 +137,7 @@ input[type="range"] { accent-color: var(--wave); }
     <input id="proxyUrl" type="text" placeholder="https://your-proxy.vercel.app/api/echo" hidden aria-label="Proxy URL">
   </div>
   <span class="spacer"></span>
+  <button id="saveBtn" hidden>Save PNG</button>
   <button id="clearBtn">Clear sheet</button>
 </nav>
 
@@ -153,9 +149,12 @@ input[type="range"] { accent-color: var(--wave); }
   const $ = (id) => document.getElementById(id);
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  const N_SITES = 8;           // qubit chain length = strokes reached per echo
-  const STEP_MS = reduced ? 40 : 170;   // how long the echo takes to travel one stroke back
-  const MORPH_MS = reduced ? 150 : 1100;
+  const N_SITES = 8;                     // qubit chain length: the new stroke + the 7 before it
+  const STEP_MS = reduced ? 40 : 160;    // the echo travels back one stroke per step
+  const GROW_MS = reduced ? 150 : 900;   // a new contour peels off its predecessor
+  const UNIT = 5;                        // contour spacing, px: every offset is a whole number of units
+  const ANGLE = Math.PI / 120;           // rotation step, 1.5°
+  const MAX_LAYERS = 40;
 
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -163,29 +162,33 @@ input[type="range"] { accent-color: var(--wave); }
   };
 
   let W = 0, H = 0, dpr = 1;
-  let strokes = [];            // chronological
+  let strokes = [];            // chronological; each has layers[0] = what the hand drew, layers[last] = now
   let drawing = null;
   let arcs = [];
   let witness = false;
   let pending = 0;
   let nextId = 1;
+  let dirty = true;
   let colors = {};
 
   function readColors() {
-    const cs = getComputedStyle(document.documentElement);
-    for (const k of ["ink", "wave", "neg", "witness", "paper", "muted"]) colors[k] = cs.getPropertyValue("--" + k).trim();
+    const cs = getComputedStyle(document.body);
+    for (const k of ["ink", "wave", "neg", "paper", "muted"]) colors[k] = cs.getPropertyValue("--" + k).trim();
+    dirty = true;
   }
-
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     const r = cv.getBoundingClientRect();
     W = r.width; H = r.height;
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    dirty = true;
   }
 
   // ---------- geometry ----------
   const clone = (pts) => pts.map((p) => ({ x: p.x, y: p.y }));
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const ease = (t) => 1 - Math.pow(1 - t, 3);
   function centroid(pts) {
     let x = 0, y = 0; for (const p of pts) { x += p.x; y += p.y; }
     return { x: x / pts.length, y: y / pts.length };
@@ -209,10 +212,17 @@ input[type="range"] { accent-color: var(--wave); }
     while (out.length < n) out.push({ ...pts[pts.length - 1] });
     return out;
   }
-  function bboxDiag(pts) {
-    let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
-    for (const p of pts) { a = Math.min(a, p.x); b = Math.min(b, p.y); c = Math.max(c, p.x); d = Math.max(d, p.y); }
-    return Math.max(12, Math.hypot(c - a, d - b));
+  function chaikin(pts, iterations = 2) {
+    let p = pts;
+    for (let k = 0; k < iterations; k++) {
+      const out = [p[0]];
+      for (let i = 0; i < p.length - 1; i++) {
+        const a = p[i], b = p[i + 1];
+        out.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 }, { x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 });
+      }
+      out.push(p[p.length - 1]); p = out;
+    }
+    return p;
   }
   function turning(pts) {
     let T = 0;
@@ -224,17 +234,18 @@ input[type="range"] { accent-color: var(--wave); }
     }
     return T;
   }
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-
-  // Points a stroke shows right now (mid-morph aware).
-  function shown(s, now) {
-    if (!s.anim) return s.pts;
-    const t = clamp((now - s.anim.start) / MORPH_MS, 0, 1);
-    if (t <= 0) return s.anim.from;
-    if (t >= 1) { s.pts = s.anim.to; s.anim = null; return s.pts; }
-    const k = ease(t);
-    return s.anim.from.map((p, i) => ({ x: p.x + (s.anim.to[i].x - p.x) * k, y: p.y + (s.anim.to[i].y - p.y) * k }));
+  // parallel curve: every point moves d px along its smoothed normal
+  function offsetCurve(pts, d) {
+    const n = pts.length;
+    return pts.map((p, i) => {
+      const a = pts[Math.max(0, i - 2)], b = pts[Math.min(n - 1, i + 2)];
+      let nx = -(b.y - a.y), ny = b.x - a.x; const l = Math.hypot(nx, ny) || 1;
+      return { x: p.x + (nx / l) * d, y: p.y + (ny / l) * d };
+    });
+  }
+  function transform(pts, about, theta, scale) {
+    const c = Math.cos(theta) * scale, s = Math.sin(theta) * scale;
+    return pts.map((p) => ({ x: about.x + (p.x - about.x) * c - (p.y - about.y) * s, y: about.y + (p.x - about.x) * s + (p.y - about.y) * c }));
   }
 
   // ---------- stroke -> circuit params ----------
@@ -318,87 +329,63 @@ input[type="range"] { accent-color: var(--wave); }
     return { taps: normalizeTaps(j.result ?? j), source: "measured · otoc-echo-v1", job: j.job_id };
   }
 
+
   // ---------- the rewrite ----------
-  function deform(s, tap, kick, now, mode) {
-    const base = s.anim ? s.anim.to : s.pts;
-    const from = shown(s, now).map((p) => ({ ...p }));
+  // An echo never erases. Each tap adds one new contour to a past stroke, derived from its latest one
+  // by a quantized move: an offset of whole UNITs (side set by the tap's sign), a rotation in 1.5° steps
+  // about the point where the hand began, and a small scale. Repeated echoes build bands, fans and rings.
+  function rewrite(s, tap, at) {
     let mag = Math.hypot(tap.re, tap.im) * (+$("strength").value) * (1 + 0.6 * s.recall);
     s.recall = 0;
-    if (mag < 0.02) return 0;
+    if (mag < 0.06) return 0;
     mag = Math.min(mag, 1.6);
     const phi = Math.atan2(tap.im, tap.re);
-    const n = base.length;
-    const c = centroid(base), size = bboxDiag(base);
-    // 1. the present leaks in: pull toward the new stroke's shape, re-centred and re-scaled onto this one
-    const kc = centroid(kick), ks = bboxDiag(kick);
-    const ghost = resample(kick, n).map((p) => ({ x: c.x + (p.x - kc.x) * size / ks, y: c.y + (p.y - kc.y) * size / ks }));
-    let pts = base.map((p, i) => ({ x: p.x + (ghost[i].x - p.x) * 0.3 * Math.min(mag, 1), y: p.y + (ghost[i].y - p.y) * 0.3 * Math.min(mag, 1) }));
-    // 2. a standing wave along the stroke, phase from the tap
-    const amp = Math.min(46, size * 0.09 * mag);
-    pts = pts.map((p, i) => {
-      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
-      let nx = -(b.y - a.y), ny = b.x - a.x; const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
-      const d = amp * Math.sin(2 * Math.PI * 1.5 * (i / (n - 1)) + phi);
-      return { x: p.x + nx * d, y: p.y + ny * d };
-    });
-    // 3. rotation about the centroid, angle from the tap's phase
-    let theta = mag * Math.sin(phi) * 0.55;
-    // 4. negative taps: invert / reverse / rotate
-    const negative = tap.re < 0 && mag > 0.12;
-    if (negative && mode === "rotate") theta += Math.PI * Math.min(mag, 1);
-    const cs = Math.cos(theta), sn = Math.sin(theta);
-    pts = pts.map((p) => ({ x: c.x + (p.x - c.x) * cs - (p.y - c.y) * sn, y: c.y + (p.x - c.x) * sn + (p.y - c.y) * cs }));
-    if (negative && mode === "invert") {
-      // mirror across the axis through the centroid perpendicular to the kick's direction
-      const a = kick[0], b = kick[kick.length - 1];
-      let ux = b.x - a.x, uy = b.y - a.y; const l = Math.hypot(ux, uy) || 1; ux /= l; uy /= l;
-      pts = pts.map((p) => { const d = (p.x - c.x) * ux + (p.y - c.y) * uy; return { x: p.x - 2 * d * ux, y: p.y - 2 * d * uy }; });
-    }
-    if (negative && mode === "reverse") { pts.reverse(); from.reverse(); s.reversed = !s.reversed; }
-    s.anim = { from, to: pts, start: now };
-    s.rewrites++;
-    return negative ? -mag : mag;
+    const sign = tap.re < 0 ? -1 : 1;
+    const last = s.layers[s.layers.length - 1].pts;
+    const steps = Math.max(1, Math.round(mag * 2.5));
+    let pts = offsetCurve(last, sign * steps * UNIT);
+    const theta = Math.round((mag * Math.sin(phi) * 0.09) / ANGLE) * ANGLE;
+    const scale = 1 + Math.round(mag * Math.cos(phi) * 0.04 * 100) / 100;
+    pts = transform(pts, last[0], theta, scale);
+    s.layers.push({ pts, from: last, born: at, neg: sign < 0 });
+    if (s.layers.length > MAX_LAYERS) s.layers.splice(1, 1);
+    return sign * mag;
   }
 
-  function applyEcho(kick, echo) {
-    const mode = $("negMode").value;
+  function applyEcho(kick, echo, instant = false) {
     const idx = strokes.indexOf(kick);
-    const past = strokes.slice(0, idx < 0 ? strokes.length : idx);
-    const t0 = performance.now();
+    const past = strokes.slice(Math.max(0, idx - (N_SITES - 1)), idx);
     const taps = echo.taps;
     let touched = 0;
     for (let k = 1; k <= past.length; k++) {
       const s = past[past.length - k];
-      // sites 1..n-1 reach the last n-1 strokes; older strokes inherit the far end of the chain, fading
-      let tap = taps[Math.min(k, taps.length - 1)] || { re: 0, im: 0 };
-      if (k >= taps.length) { const f = Math.pow(0.7, k - taps.length + 1); tap = { re: tap.re * f, im: tap.im * f }; }
-      const at = t0 + k * STEP_MS; // the echo travels backward at finite speed
+      const tap = taps[Math.min(k, taps.length - 1)] || { re: 0, im: 0 };
+      if (instant) { if (rewrite(s, tap, -1e9)) touched++; continue; }
+      if (Math.hypot(tap.re, tap.im) * (+$("strength").value) >= 0.06) touched++;
       setTimeout(() => {
         if (!strokes.includes(s)) return;
         const now = performance.now();
-        const m = deform(s, tap, kick.pts, now, mode);
-        s.flash = now;
-        if (m !== 0) arcs.push({ from: centroid(kick.pts), to: centroid(s.anim ? s.anim.to : s.pts), neg: m < 0, born: now, w: Math.abs(m) });
-      }, at - t0);
-      if (Math.hypot(tap.re, tap.im) >= 0.02) touched++;
+        const m = rewrite(s, tap, now);
+        s.flash = now; dirty = true;
+        if (m) arcs.push({ from: kick.layers[0].pts[0], to: s.layers[s.layers.length - 1].pts[0], neg: m < 0, born: now });
+      }, k * STEP_MS);
     }
-    drawTaps(taps, echo.source, echo.job);
+    if (!instant) drawTaps(taps, echo.source, echo.job);
     return touched;
   }
 
   async function sendEcho(s) {
-    const params = featuresToParams(s);
-    s.params = params;
+    const params = featuresToParams({ pts: s.layers[0].pts, t0: s.t0, t1: s.t1 });
     pending++; s.pendingSince = performance.now();
     setStatus(`stroke ${s.id} · kick ${params.kick}, depth ${params.depth} · waiting for the echo…`, "busy");
     try {
       const echo = $("source").value === "moth" ? await mothEcho(params) : await simulateEcho(params);
-      s.pendingSince = 0; pending--;
+      s.pendingSince = 0; pending--; dirty = true;
       if (!strokes.includes(s)) return;
       const touched = applyEcho(s, echo);
-      setStatus(touched ? `echo from stroke ${s.id} is rewriting ${touched} earlier stroke${touched > 1 ? "s" : ""}` : `stroke ${s.id} landed. Nothing before it to rewrite yet.`, pending ? "busy" : "");
+      setStatus(touched ? `echo from stroke ${s.id} adds a contour to ${touched} earlier stroke${touched > 1 ? "s" : ""}` : `stroke ${s.id} landed. Nothing before it to rewrite yet.`, pending ? "busy" : "");
     } catch (e) {
-      s.pendingSince = 0; pending--;
+      s.pendingSince = 0; pending--; dirty = true;
       setStatus(e.message + ". Switch Echo to simulated to keep drawing.", "err");
     }
   }
@@ -437,62 +424,80 @@ input[type="range"] { accent-color: var(--wave); }
   }
 
   // ---------- render ----------
-  function strokePath(pts, widthFn, color) {
-    ctx.fillStyle = color;
-    for (let i = 1; i < pts.length; i++) {
-      const s = i / (pts.length - 1);
-      ctx.lineWidth = widthFn(s);
-      ctx.strokeStyle = color;
-      ctx.beginPath(); ctx.moveTo(pts[i - 1].x, pts[i - 1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
-    }
+  const isLight = () => document.body.dataset.medium === "light";
+  function path(pts) {
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
   }
-  const taper = (s) => 4.2 * (1 - 0.78 * s) + 0.7; // heavy where the hand began, thin where it lifted
+  function layerPts(L, now) {
+    if (!L.from || now - L.born >= GROW_MS) { L.from = null; return [L.pts, 1]; }
+    const k = ease(clamp((now - L.born) / GROW_MS, 0, 1));
+    return [L.pts.map((p, i) => ({ x: L.from[i].x + (p.x - L.from[i].x) * k, y: L.from[i].y + (p.y - L.from[i].y) * k })), k];
+  }
+  // light medium: each contour's hue says how many echoes ago it was laid down
+  const hueFor = (age) => (215 - age * 17 + 360) % 360;
 
   function frame(now) {
-    ctx.clearRect(0, 0, W, H);
+    const busy = drawing || witness || pending || arcs.length || strokes.some((s) => s.flash || s.layers.some((L) => L.from));
+    if (!dirty && !busy) return requestAnimationFrame(frame);
+    dirty = false;
+    const light = isLight();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = colors.paper; ctx.fillRect(0, 0, W, H);
     ctx.lineCap = "round"; ctx.lineJoin = "round";
+    if (light) ctx.globalCompositeOperation = "lighter";
 
-    if (witness) {
-      ctx.save(); ctx.setLineDash([3, 4]);
-      for (const s of strokes) {
-        strokePath(s.orig, () => 1, colors.witness);
-        const cur = shown(s, now);
-        ctx.globalAlpha = 0.35; ctx.lineWidth = 0.6; ctx.strokeStyle = colors.witness;
-        for (let i = 0; i < s.orig.length; i += 9) { const j = Math.round(i * (cur.length - 1) / (s.orig.length - 1)); ctx.beginPath(); ctx.moveTo(s.orig[i].x, s.orig[i].y); ctx.lineTo(cur[j].x, cur[j].y); ctx.stroke(); }
+    for (const s of strokes) {
+      const n = s.layers.length;
+      let glow = 0;
+      if (s.pendingSince) glow = 0.5 + 0.5 * Math.sin((now - s.pendingSince) / 140);
+      for (const w of strokes) if (w.pendingSince && w !== s) {
+        const wi = strokes.indexOf(w), si = strokes.indexOf(s), k = wi - si;
+        if (k > 0 && k < N_SITES) { const ph = ((now - w.pendingSince) % (N_SITES * STEP_MS + 400)) - k * STEP_MS; if (ph >= 0 && ph < 380) glow = Math.max(glow, 1 - ph / 380); }
+      }
+      if (s.flash) { const f = 1 - (now - s.flash) / 700; if (f > 0) glow = Math.max(glow, f); else s.flash = 0; }
+
+      for (let j = 0; j < n; j++) {
+        const L = s.layers[j];
+        const [pts, k] = layerPts(L, now);
+        const age = n - 1 - j, top = j === n - 1;
+        if (light) {
+          const a = (top ? 0.9 : 0.16 + 0.4 * Math.pow(0.93, age)) * k;
+          ctx.strokeStyle = `hsla(${hueFor(age)}, 85%, ${top ? 78 : 62}%, ${a})`;
+          if (top) { ctx.lineWidth = 7; ctx.globalAlpha = 0.07 + 0.15 * glow; path(pts); ctx.globalAlpha = 1; }
+          ctx.lineWidth = top ? 1.6 : 1;
+        } else {
+          ctx.strokeStyle = L.neg && !top ? colors.neg : colors.ink;
+          ctx.globalAlpha = (top ? 1 : 0.14 + 0.5 * Math.pow(0.9, age)) * k;
+          ctx.lineWidth = top ? 1.8 + glow * 1.6 : 0.75;
+        }
+        if (!light && top && glow > 0) { ctx.strokeStyle = colors.wave; ctx.globalAlpha = 0.35 + 0.65 * glow; }
+        path(pts);
         ctx.globalAlpha = 1;
       }
-      ctx.restore();
     }
 
-    // arcs: who rewrote whom, pointing backward
-    arcs = arcs.filter((a) => now - a.born < 2600);
+    if (witness) {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.setLineDash([2, 4]); ctx.strokeStyle = colors.wave; ctx.lineWidth = 1.4;
+      for (const s of strokes) path(s.layers[0].pts);
+      ctx.setLineDash([]);
+    }
+
+    arcs = arcs.filter((a) => now - a.born < 1800);
+    ctx.globalCompositeOperation = "source-over";
     for (const a of arcs) {
-      const age = (now - a.born) / 2600;
-      ctx.globalAlpha = (1 - age) * 0.55; ctx.strokeStyle = a.neg ? colors.neg : colors.wave; ctx.lineWidth = 0.8 + a.w;
+      ctx.globalAlpha = (1 - (now - a.born) / 1800) * 0.5; ctx.strokeStyle = a.neg ? colors.neg : colors.wave; ctx.lineWidth = 0.8;
       const mx = (a.from.x + a.to.x) / 2, my = (a.from.y + a.to.y) / 2, dx = a.to.x - a.from.x, dy = a.to.y - a.from.y;
-      ctx.beginPath(); ctx.moveTo(a.from.x, a.from.y); ctx.quadraticCurveTo(mx - dy * 0.25, my + dx * 0.25, a.to.x, a.to.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(a.from.x, a.from.y); ctx.quadraticCurveTo(mx - dy * 0.2, my + dx * 0.2, a.to.x, a.to.y); ctx.stroke();
       ctx.globalAlpha = 1;
     }
 
-    // a waiting echo: a pulse running backward through the history, one stroke at a time
-    const waiting = strokes.filter((s) => s.pendingSince);
-    for (let i = 0; i < strokes.length; i++) {
-      const s = strokes[i];
-      const pts = shown(s, now);
-      let glow = 0;
-      for (const w of waiting) {
-        const wi = strokes.indexOf(w); if (i > wi) continue;
-        const k = wi - i, period = (wi + 1) * STEP_MS + 500;
-        const ph = ((now - w.pendingSince) % period) - k * STEP_MS;
-        if (ph >= 0 && ph < 420) glow = Math.max(glow, 1 - ph / 420);
-      }
-      if (s.flash) { const f = 1 - (now - s.flash) / 900; if (f > 0) glow = Math.max(glow, f); else s.flash = 0; }
-      if (glow > 0 && !reduced) { ctx.save(); ctx.shadowColor = colors.wave; ctx.shadowBlur = 16 * glow; strokePath(pts, (t) => taper(t) + 1.2 * glow, colors.wave); ctx.restore(); }
-      ctx.globalAlpha = s.sample ? 0.8 : 1;
-      strokePath(pts, taper, colors.ink);
-      ctx.globalAlpha = 1;
+    if (drawing && drawing.pts.length > 1) {
+      ctx.strokeStyle = light ? "hsl(215, 85%, 80%)" : colors.ink; ctx.lineWidth = 1.8;
+      path(drawing.pts);
     }
-    if (drawing && drawing.pts.length > 1) strokePath(drawing.pts, taper, colors.ink);
     requestAnimationFrame(frame);
   }
 
@@ -510,11 +515,11 @@ input[type="range"] { accent-color: var(--wave); }
   });
   const finish = () => {
     if (!drawing) return;
-    const d = drawing; drawing = null;
+    const d = drawing; drawing = null; dirty = true;
     if (d.pts.length < 3 || pathLength(d.pts) < 12) return;
-    const n = clamp(Math.round(pathLength(d.pts) / 4), 24, 220);
-    const pts = resample(d.pts, n);
-    const s = { id: nextId++, pts, orig: clone(pts), t0: d.t0, t1: performance.now(), recall: 0, rewrites: 0, anim: null, flash: 0, pendingSince: 0 };
+    const smooth = chaikin(d.pts, 2);
+    const pts = resample(smooth, clamp(Math.round(pathLength(smooth) / 4), 24, 240));
+    const s = { id: nextId++, layers: [{ pts, born: 0 }], t0: d.t0, t1: performance.now(), recall: 0, flash: 0, pendingSince: 0 };
     strokes.push(s);
     sendEcho(s);
   };
@@ -523,11 +528,11 @@ input[type="range"] { accent-color: var(--wave); }
 
   function setWitness(on) {
     if (on === witness) return;
-    witness = on;
+    witness = on; dirty = true;
     $("witnessBtn").setAttribute("aria-pressed", String(on));
     if (on) {
       for (const s of strokes) s.recall++;
-      if (strokes.length) setStatus("witnessing what you drew. Every line you look at will drift further next time.");
+      if (strokes.length) setStatus("dotted: what you actually drew. Every stroke you look at drifts further on the next echo.");
     }
   }
   const wb = $("witnessBtn");
@@ -539,41 +544,61 @@ input[type="range"] { accent-color: var(--wave); }
   addEventListener("keyup", (e) => { if (e.key === "w" || e.key === "W") setWitness(false); });
   addEventListener("blur", () => setWitness(false));
 
-  $("clearBtn").addEventListener("click", () => { strokes = []; arcs = []; setStatus("Blank sheet. The first stroke has no past to rewrite."); });
+  $("clearBtn").addEventListener("click", () => { strokes = []; arcs = []; dirty = true; setStatus("Blank sheet. The first stroke has no past to rewrite."); });
+  function setMedium(m) { document.body.dataset.medium = m; $("medium").value = m; store.set("ri.medium", m); readColors(); }
+  $("medium").addEventListener("change", () => setMedium($("medium").value));
   $("source").addEventListener("change", () => {
     const moth = $("source").value === "moth";
     $("proxyUrl").hidden = !moth; store.set("ri.source", $("source").value);
     if (moth && !$("proxyUrl").value) $("proxyUrl").focus();
   });
   $("proxyUrl").addEventListener("change", () => store.set("ri.proxy", $("proxyUrl").value.trim()));
-  $("negMode").addEventListener("change", () => store.set("ri.neg", $("negMode").value));
+  $("strength").addEventListener("change", () => store.set("ri.strength", $("strength").value));
+
+  // Save only works as a standalone page; inside an embedded viewer downloads are blocked.
+  let standalone = false; try { standalone = window.top === window.self; } catch {}
+  if (standalone) {
+    $("saveBtn").hidden = false;
+    $("saveBtn").addEventListener("click", () => {
+      const a = document.createElement("a");
+      a.download = `retrocausal-ink-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.png`;
+      a.href = cv.toDataURL("image/png"); a.click();
+    });
+  }
 
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors);
   new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   addEventListener("resize", resize);
 
-  // ---------- sample strokes so the sheet opens mid-drawing ----------
+  // ---------- sample strokes, already echoed a few times, so the sheet opens mid-drawing ----------
   function seed() {
-    const cx = W / 2, cy = H / 2, u = Math.min(W, H);
-    const make = (fn, n = 90) => { const pts = []; for (let i = 0; i < n; i++) pts.push(fn(i / (n - 1))); return pts; };
+    const cx = W / 2, cy = H * 0.52, u = Math.min(W, H);
+    const make = (fn, n = 120) => { const pts = []; for (let i = 0; i < n; i++) pts.push(fn(i / (n - 1))); return pts; };
     const shapes = [
-      make((t) => ({ x: cx - u * 0.32 + t * u * 0.64, y: cy - u * 0.12 + Math.sin(t * Math.PI * 2) * u * 0.05 })),
-      make((t) => ({ x: cx - u * 0.18 + Math.cos(t * Math.PI * 1.6) * u * 0.1, y: cy + u * 0.08 + Math.sin(t * Math.PI * 1.6) * u * 0.1 })),
-      make((t) => ({ x: cx + u * 0.16 + t * u * 0.06, y: cy - u * 0.02 + t * u * 0.24 })),
-      make((t) => ({ x: cx + u * 0.02 + Math.cos(t * Math.PI * 3) * u * 0.05 * (1 - t), y: cy - u * 0.26 + t * u * 0.1 })),
-      make((t) => ({ x: cx - u * 0.3 + t * u * 0.22, y: cy + u * 0.24 - Math.pow(t, 2) * u * 0.08 })),
+      make((t) => ({ x: cx - u * 0.34 + t * u * 0.3, y: cy - u * 0.14 + Math.sin(t * Math.PI * 1.5) * u * 0.06 })),
+      make((t) => ({ x: cx + u * 0.12 + Math.cos(-Math.PI / 2 + t * Math.PI * 1.7) * u * 0.13, y: cy - u * 0.06 + Math.sin(-Math.PI / 2 + t * Math.PI * 1.7) * u * 0.13 })),
+      make((t) => ({ x: cx - u * 0.26 + t * u * 0.04, y: cy + u * 0.02 + t * u * 0.22 })),
+      make((t) => ({ x: cx - u * 0.1 + t * u * 0.42, y: cy + u * 0.2 - Math.sin(t * Math.PI) * u * 0.07 })),
     ];
-    strokes = shapes.map((pts) => ({ id: nextId++, pts, orig: clone(pts), t0: 0, t1: 600, recall: 0, rewrites: 0, anim: null, flash: 0, pendingSince: 0, sample: true }));
+    strokes = shapes.map((pts) => ({ id: nextId++, layers: [{ pts, born: 0 }], t0: 0, t1: 700, recall: 0, flash: 0, pendingSince: 0, sample: true }));
+    // replay a few echoes deterministically so the opening frame shows the system
+    let r = 7; const rnd = () => ((r = (r * 16807) % 2147483647) / 2147483647);
+    for (let e = 0; e < 9; e++) {
+      const kick = strokes[strokes.length - 1];
+      const taps = []; for (let k = 0; k < N_SITES; k++) { const m = 0.75 * Math.exp(-k / 4) * (0.6 + 0.4 * rnd()); const ph = rnd() * Math.PI * 2; taps.push({ re: m * Math.cos(ph), im: m * Math.sin(ph) }); }
+      applyEcho(kick, { taps }, true);
+      strokes.push(strokes.shift()); // rotate which stroke counts as "now" so every sample gets layers
+    }
   }
 
   readColors(); resize();
   $("source").value = store.get("ri.source") === "moth" ? "moth" : "sim";
   $("proxyUrl").value = store.get("ri.proxy") || "";
   $("proxyUrl").hidden = $("source").value !== "moth";
-  const nm = store.get("ri.neg"); if (nm) $("negMode").value = nm;
+  const st = store.get("ri.strength"); if (st) $("strength").value = st;
+  setMedium(store.get("ri.medium") === "light" ? "light" : "graphite");
   seed();
   drawTaps([], "no echo yet");
-  $("echoSrc").textContent = "no echo yet";
   requestAnimationFrame(frame);
 })();
 </script>
