@@ -1,5 +1,5 @@
 {
-  "name": "retrocausal-ink-proxy",
+  "name": "huygens-pen-proxy",
   "private": true,
   "type": "module",
   "engines": { "node": ">=18" }

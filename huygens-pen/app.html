@@ -1,0 +1,675 @@
+<title>Huygens Pen</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: an instrument plate. Full-bleed field; title + formula top-left, readout top-right,
+   controls bottom-left, the law being drawn bottom-right.
+   Single deliberate dark look: black ground, white, one electric blue. */
+:root {
+  color-scheme: dark;
+  --ground: #000000;
+  --ink: #f4f5f8;
+  --dim: #7d8396;
+  --hair: rgba(244, 245, 248, 0.16);
+  --blue: #1f3bff;
+  --tag: #ff3d6e;
+  --f-display: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--ground); color: var(--ink); overflow: hidden;
+  font-family: var(--f-mono); font-size: 12px; -webkit-font-smoothing: antialiased;
+}
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#overlay { touch-action: none; cursor: crosshair; }
+body[data-tool="tag"] #overlay { cursor: pointer; }
+.hud { position: fixed; pointer-events: none; }
+.hud > * { pointer-events: auto; }
+h1, .formula, #readout, #legend .law, #legend .gloss { background: rgba(0,0,0,0.82); box-shadow: 0 0 0 6px rgba(0,0,0,0.82); width: fit-content; }
+#readout { box-shadow: 0 0 0 8px rgba(0,0,0,0.82); }
+
+#head { top: calc(env(safe-area-inset-top, 0px) + 20px); left: max(20px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 8px; }
+h1 { margin: 0; font: italic 400 34px/1 var(--f-display); letter-spacing: -0.01em; }
+.formula { color: var(--dim); font-size: 12px; letter-spacing: 0.02em; }
+.formula b { color: var(--ink); font-weight: 400; }
+
+#readout {
+  top: calc(env(safe-area-inset-top, 0px) + 22px); right: max(20px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: auto auto; gap: 3px 14px; font-size: 11px; font-variant-numeric: tabular-nums; text-align: right;
+}
+#readout dt { color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px; align-self: center; }
+#readout dd { margin: 0; }
+
+#tools {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); left: max(20px, env(safe-area-inset-left, 0px));
+  right: max(20px, env(safe-area-inset-right, 0px)); max-width: 760px;
+  display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center;
+}
+.group { display: flex; align-items: center; gap: 0; border: 1px solid var(--hair); background: rgba(0,0,0,0.72); }
+.group .cap { padding: 0 8px; color: var(--dim); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
+button, select, input {
+  font: 500 11px/1 var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink); background: transparent; border: 0; border-left: 1px solid var(--hair);
+  padding: 9px 11px; cursor: pointer; border-radius: 0;
+}
+input[type="text"] { text-transform: none; letter-spacing: 0; cursor: text; width: 210px; }
+.group > :first-child { border-left: 0; }
+button:hover { background: rgba(255,255,255,0.08); }
+button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+#nval { min-width: 22px; text-align: center; font-size: 12px; padding: 0 4px; }
+select option { background: #000; }
+
+#legend {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); right: max(20px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; pointer-events: none;
+}
+#legend .law { font: italic 400 19px/1 var(--f-display); }
+#legend .gloss { font-size: 10px; color: var(--dim); max-width: 34ch; line-height: 1.5; }
+.group[hidden] { display: none; }
+#status { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 22px); transform: translateX(-50%); color: var(--dim); font-size: 11px; pointer-events: none; white-space: nowrap; }
+@media (max-width: 760px) {
+  h1 { font-size: 26px; }
+  .formula { font-size: 10.5px; max-width: 60vw; }
+  #readout { font-size: 10px; }
+  #legend { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 96px); left: max(20px, env(safe-area-inset-left, 0px)); right: auto; align-items: flex-start; text-align: left; }
+  #legend .law { font-size: 15px; }
+  #legend .gloss { display: none; }
+  #status { display: none; }
+}
+@media (max-width: 560px) {
+  #readout { display: none; }
+  input[type="text"] { width: 150px; }
+}
+</style>
+
+<canvas id="field"></canvas>
+<canvas id="photons"></canvas>
+<canvas id="lines"></canvas>
+<canvas id="overlay" aria-label="Drawing surface. Each stroke you draw becomes a slit."></canvas>
+
+<header id="head" class="hud">
+  <h1>Huygens Pen</h1>
+  <div class="formula">every stroke is a slit &nbsp;·&nbsp; <b id="formula">I(x) = |Σ e<sup>ikr</sup> / √r|²</b></div>
+</header>
+
+<dl id="readout" class="hud" aria-live="polite">
+  <dt>sources</dt><dd id="rSources">0</dd>
+  <dt>coherent</dt><dd id="rGroups">0</dd>
+  <dt>depth n</dt><dd id="rN">0</dd>
+  <dt>λ</dt><dd id="rLambda">–</dd>
+  <dt id="rModeCap">render</dt><dd id="rMode">basin</dd>
+</dl>
+
+<div id="status" aria-live="polite"></div>
+
+<nav id="tools" class="hud" aria-label="Instrument controls">
+  <div class="group" role="group" aria-label="Direction">
+    <button data-dir="field" aria-pressed="true" title="Interference field (F)">Field</button>
+    <button data-dir="lines" aria-pressed="false" title="Line drawing (L)">Lines</button>
+  </div>
+  <div class="group" role="group" aria-label="Tool">
+    <button id="tDraw" aria-pressed="true" title="Draw a slit (D)">Draw</button>
+    <button id="tTag" aria-pressed="false" title="Tag a stroke with which-path information (T)">Tag path</button>
+    <button id="tErase" title="Erase all which-path tags (E)">Erase tags</button>
+  </div>
+  <div class="group" role="group" aria-label="Recursion depth">
+    <span class="cap">depth</span>
+    <button id="nDown" aria-label="Decrease depth">−</button>
+    <span id="nval">0</span>
+    <button id="nUp" aria-label="Increase depth">+</button>
+  </div>
+  <div class="group" id="fieldGroup" role="group" aria-label="Field render">
+    <button data-r="basin" aria-pressed="true">Basin</button>
+    <button data-r="mono" aria-pressed="false">Mono</button>
+    <button data-r="contour" aria-pressed="false">Contour</button>
+    <button id="tPhotons" aria-pressed="false" title="Detect photons one at a time (P)">Photons</button>
+  </div>
+  <div class="group" id="linesGroup" role="group" aria-label="Line render" hidden>
+    <button data-l="rays" aria-pressed="true" title="Bohmian trajectories">Rays</button>
+    <button data-l="fronts" aria-pressed="false" title="Wavefronts">Fronts</button>
+  </div>
+  <div class="group" id="bitsGroup" role="group" aria-label="Randomness" hidden>
+    <span class="cap">bits</span>
+    <select id="bits" aria-label="Source of randomness"><option value="local">local</option><option value="moth">Moth QPU</option></select>
+    <input id="proxyUrl" type="text" placeholder="https://your-proxy.vercel.app/api/moth" hidden aria-label="Proxy URL">
+  </div>
+  <div class="group"><button id="tClear" title="Clear (C)">Clear</button></div>
+</nav>
+
+<aside id="legend" class="hud" aria-live="polite">
+  <div class="law" id="law"></div>
+  <div class="gloss" id="gloss"></div>
+</aside>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const fieldCv = $("field"), photonCv = $("photons"), lineCv = $("lines"), ov = $("overlay");
+  const octx = ov.getContext("2d"), pctx = photonCv.getContext("2d"), lctx = lineCv.getContext("2d");
+  const gl = fieldCv.getContext("webgl2", { antialias: false, preserveDrawingBuffer: false });
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+  const MAX_SRC = 1400;
+  const PER_GEN = 14;
+  let W = 0, H = 0, dpr = 1, S = 1;          // css size, device ratio, field scale (field px per css px)
+  let strokes = [];                          // {pts, k, tagged, id}
+  let genSources = [];                       // secondary sources from recursion
+  let depth = 0, render = "basin", tool = "draw", photonsOn = false;
+  let dir = "field", lineRender = "rays", rays = [], rayGroups = null, rayCursor = 0;
+  let drawing = null, norm = 1, lastI = null, nextId = 1;
+  let cdf = null, detections = 0, photonPool = [], fetchingBits = false;
+
+  // ---------- geometry ----------
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const len = (pts) => { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y); return L; };
+  function resample(pts, n) {
+    const L = len(pts); if (n < 2 || L === 0) return [pts[0]];
+    const out = [{ ...pts[0] }], step = L / (n - 1); let acc = 0;
+    for (let i = 1, prev = pts[0]; i < pts.length && out.length < n; i++) {
+      const cur = pts[i]; let d = Math.hypot(cur.x - prev.x, cur.y - prev.y);
+      while (acc + d >= step && out.length < n) { const t = (step - acc) / d; const q = { x: prev.x + (cur.x - prev.x) * t, y: prev.y + (cur.y - prev.y) * t }; out.push(q); prev = q; d = Math.hypot(cur.x - prev.x, cur.y - prev.y); acc = 0; }
+      acc += d; prev = cur;
+    }
+    while (out.length < n) out.push({ ...pts[pts.length - 1] });
+    return out;
+  }
+  function chaikin(p, it = 2) {
+    for (let k = 0; k < it; k++) { const o = [p[0]]; for (let i = 0; i < p.length - 1; i++) { const a = p[i], b = p[i+1]; o.push({ x: .75*a.x + .25*b.x, y: .75*a.y + .25*b.y }, { x: .25*a.x + .75*b.x, y: .25*a.y + .75*b.y }); } o.push(p[p.length-1]); p = o; }
+    return p;
+  }
+
+  // ---------- sources ----------
+  // Each source: x, y, k (wavenumber), amp, group (0 = shared coherent group; tagged strokes get their own), phase
+  function buildSources() {
+    const src = [];
+    strokes.forEach((s, i) => {
+      const lambda = 2 * Math.PI / s.k;
+      const n = clamp(Math.round(len(s.pts) / Math.max(3.5, lambda * 0.45)), 2, 70);
+      const pts = resample(s.pts, n);
+      const amp = 7 / Math.sqrt(n);
+      for (const p of pts) src.push({ x: p.x, y: p.y, k: s.k, amp, group: s.tagged ? i + 1 : 0, phase: 0 });
+    });
+    for (const g of genSources) src.push(g);
+    src.sort((a, b) => a.group - b.group);
+    return src.slice(0, MAX_SRC);
+  }
+
+  // ---------- WebGL ----------
+  const VS = `#version 300 es
+  in vec2 p; void main() { gl_Position = vec4(p, 0., 1.); }`;
+  const FS = `#version 300 es
+  precision highp float;
+  uniform sampler2D uSrc; uniform int uCount; uniform vec2 uRes; uniform float uScale;
+  uniform float uNorm; uniform int uMode; uniform float uRawNorm;
+  out vec4 o;
+  const vec3 BLUE = vec3(0.12, 0.23, 1.0);
+  // one wavefront (the line where the phase of this group is 0 mod 2pi), weighted by amplitude.
+  // Far from the sources |grad phase| is about k, so |phase| / k is the distance to the line in css px.
+  float front(vec2 acc, float k) {
+    if (k <= 0.) return 0.;
+    float A = sqrt(dot(acc, acc) / uNorm);
+    float lam = 6.2831853 / k;
+    float half_ = 0.55 + 1.5 * clamp(A, 0., 1.);
+    float d = abs(atan(acc.y, acc.x)) / k;
+    float aa = 0.75 / uScale;
+    return (1. - smoothstep(half_ - aa, half_ + aa, d)) * smoothstep(0.10, 0.22, A);
+  }
+  void main() {
+    vec2 p = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y) / uScale;
+    vec2 acc = vec2(0.); vec2 coh = vec2(0.); float I = 0.; float g = 0.; float kg = 0.; float cov = 0.;
+    for (int i = 0; i < ${MAX_SRC}; i++) {
+      if (i >= uCount) break;
+      vec4 a = texelFetch(uSrc, ivec2(i, 0), 0);
+      vec4 b = texelFetch(uSrc, ivec2(i, 1), 0);
+      if (b.x != g) { I += dot(acc, acc); if (g == 0.) coh = acc; if (uMode == 4) cov = max(cov, front(acc, kg)); acc = vec2(0.); g = b.x; }
+      kg = a.z;
+      float r = length(p - a.xy) + 1.5;
+      float ph = a.z * r + b.y;
+      acc += a.w * vec2(cos(ph), sin(ph)) * inversesqrt(r);
+    }
+    if (g == 0.) coh = acc;
+    I += dot(acc, acc);
+    if (uMode == 4) { cov = max(cov, front(acc, kg)); o = vec4(vec3(0.97 * cov), 1.); return; }
+    if (uMode == 0) {           // raw: log-encoded intensity, phase of the coherent group
+      float v = clamp(log(1. + I / uRawNorm) / log(65.), 0., 1.);
+      float hi = floor(v * 255.) / 255.;
+      o = vec4(hi, fract(v * 255.), atan(coh.y, coh.x) / 6.2831853 + 0.5, 1.);
+      return;
+    }
+    float t = sqrt(I / uNorm);
+    float w = fwidth(t) * 0.9 + 1e-4;
+    vec3 c;
+    if (uMode == 1) {           // basin: three flat inks with hard, anti-aliased edges
+      float a1 = smoothstep(0.30 - w, 0.30 + w, t), a2 = smoothstep(0.72 - w, 0.72 + w, t);
+      c = mix(mix(vec3(0.), BLUE, a1), vec3(0.97), a2);
+    } else if (uMode == 2) {    // mono: black or white
+      c = vec3(smoothstep(0.42 - w, 0.42 + w, t)) * 0.97;
+    } else {                    // contour: isolines of the field, brighter where it is brighter
+      float q = t * 7.;
+      float f = abs(fract(q) - 0.5);
+      float line = 1. - smoothstep(0.5 - fwidth(q) * 1.1, 0.5, f + 0.5 - fwidth(q) * 0.0 - 0.02);
+      float lv = clamp(floor(q) / 7., 0., 1.);
+      c = mix(vec3(0.), mix(BLUE * 1.1, vec3(0.97), lv), (1. - smoothstep(0., fwidth(q) * 1.2, 0.5 - f)) * step(0.06, t));
+    }
+    o = vec4(c, 1.);
+  }`;
+  function shader(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+  let prog, uni = {}, srcTex, fbo, fboTex, fboW = 0, fboH = 0;
+  function initGL() {
+    prog = gl.createProgram();
+    gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
+    gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    gl.useProgram(prog);
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    for (const n of ["uSrc", "uCount", "uRes", "uScale", "uNorm", "uMode", "uRawNorm"]) uni[n] = gl.getUniformLocation(prog, n);
+    srcTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, srcTex);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    fbo = gl.createFramebuffer(); fboTex = gl.createTexture();
+  }
+  function upload(src) {
+    const n = Math.max(1, src.length), data = new Float32Array(n * 2 * 4);
+    src.forEach((s, i) => { data.set([s.x, s.y, s.k, s.amp], i * 4); data.set([s.group, s.phase, 0, 0], (n + i) * 4); });
+    gl.bindTexture(gl.TEXTURE_2D, srcTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, n, 2, 0, gl.RGBA, gl.FLOAT, data);
+    gl.uniform1i(uni.uCount, src.length);
+  }
+  // render raw intensity into an offscreen buffer and read it back for analysis
+  const RAW_SCALE = 0.5;
+  let rawNorm = 1;
+  function rawPass() {
+    const w = Math.max(2, Math.round(W * RAW_SCALE)), h = Math.max(2, Math.round(H * RAW_SCALE));
+    if (w !== fboW || h !== fboH) {
+      gl.bindTexture(gl.TEXTURE_2D, fboTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, fboTex, 0);
+      fboW = w; fboH = h;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, w, h);
+    gl.uniform2f(uni.uRes, w, h); gl.uniform1f(uni.uScale, RAW_SCALE); gl.uniform1i(uni.uMode, 0); gl.uniform1f(uni.uRawNorm, rawNorm);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, srcTex); gl.uniform1i(uni.uSrc, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const px = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const I = new Float32Array(w * h), P = new Float32Array(w * h), L65 = Math.log(65);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = ((h - 1 - y) * w + x) * 4, j = y * w + x;      // flip to top-down rows
+      const v = px[i] / 255 + px[i + 1] / 65025;
+      I[j] = (Math.exp(v * L65) - 1) * rawNorm; P[j] = (px[i + 2] / 255 - 0.5) * 2 * Math.PI;
+    }
+    return { I, P, w, h };
+  }
+  function percentile(arr, q) { const s = Float32Array.from(arr.filter((_, i) => i % 7 === 0)).sort(); return s[Math.floor(q * (s.length - 1))] || 1; }
+
+  // Huygens' rule as recursion: the brightest local maxima of generation g become the sources of g + 1
+  function recurse() {
+    genSources = [];
+    if (!strokes.length) return;
+    const kMean = strokes.reduce((a, s) => a + s.k, 0) / strokes.length;
+    const taken = buildSources().map((s) => ({ x: s.x, y: s.y }));
+    for (let g = 1; g <= depth; g++) {
+      upload(buildSources());
+      const R = rawPass();
+      const cand = [];
+      const margin = 8;
+      for (let y = margin; y < R.h - margin; y++) for (let x = margin; x < R.w - margin; x++) {
+        const j = y * R.w + x, v = R.I[j];
+        if (v <= R.I[j - 1] || v <= R.I[j + 1] || v <= R.I[j - R.w] || v <= R.I[j + R.w] || v <= R.I[j - R.w - 1] || v <= R.I[j + R.w + 1]) continue;
+        cand.push([v, x / RAW_SCALE, y / RAW_SCALE, R.P[j]]);
+      }
+      cand.sort((a, b) => b[0] - a[0]);
+      let added = 0;
+      const minGap = 34 + g * 6;
+      for (const [, x, y, ph] of cand) {
+        if (added >= PER_GEN) break;
+        if (taken.some((t) => Math.hypot(t.x - x, t.y - y) < minGap)) continue;
+        taken.push({ x, y });
+        genSources.push({ x, y, k: kMean, amp: 1.6 * Math.pow(0.82, g), group: 0, phase: -ph, gen: g });
+        added++;
+      }
+    }
+  }
+
+  function recompute() {
+    if (!gl) return;
+    recurse();
+    const src = buildSources();
+    upload(src);
+    // estimate scale, then measure the field properly
+    rawNorm = 1; let R = rawPass();
+    rawNorm = Math.max(1e-4, percentile(R.I, 0.5)); R = rawPass();
+    norm = Math.max(1e-6, percentile(R.I, 0.993));
+    lastI = R;
+    drawField();
+    readout(src);
+    resetPhotons();
+    startRays();
+    drawOverlay();
+  }
+  function drawField() {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, fieldCv.width, fieldCv.height);
+    gl.uniform2f(uni.uRes, fieldCv.width, fieldCv.height); gl.uniform1f(uni.uScale, S);
+    const mode = dir === "lines" ? (lineRender === "fronts" ? 4 : 1) : { basin: 1, mono: 2, contour: 3 }[render];
+    gl.uniform1f(uni.uNorm, norm); gl.uniform1i(uni.uMode, mode);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    fieldCv.style.opacity = dir === "lines" && lineRender === "rays" ? 0 : photonsOn ? 0.1 : 1;
+    legend();
+  }
+
+  // ---------- rays: de Broglie–Bohm trajectories ----------
+  // Write psi = |psi| e^{iS}. A Bohmian particle moves along grad S = Im(conj(psi) grad psi) / |psi|^2.
+  // Rays leave every point of a stroke on both sides and follow the field of their own coherent group,
+  // so untagged strokes share one psi (rays bunch into the bright fringes and never cross) while a tagged
+  // stroke's rays only see its own wave.
+  function startRays() {
+    rays = []; rayGroups = null; rayCursor = 0;
+    lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.clearRect(0, 0, lineCv.width, lineCv.height);
+    if (dir !== "lines" || lineRender !== "rays" || !strokes.length) return;
+    rayGroups = new Map();
+    for (const s of buildSources()) { if (!rayGroups.has(s.group)) rayGroups.set(s.group, []); rayGroups.get(s.group).push(s.x, s.y, s.k, s.amp, s.phase); }
+    for (const [g, a] of rayGroups) rayGroups.set(g, Float64Array.from(a));
+    const spacing = strokes.length > 6 ? 10 : 7;
+    const push = (x, y, g) => rays.push({ x, y, g, steps: 0, alive: true, w: 1, dx: 0, dy: 0 });
+    strokes.forEach((s, i) => {
+      const g = s.tagged ? i + 1 : 0, lambda = 2 * Math.PI / s.k;
+      if (len(s.pts) < 3 * lambda) {
+        // a short stroke is a point-like slit: rays leave it in every direction
+        const c = s.pts[s.pts.length >> 1], n = 40, r0 = lambda * 1.2;
+        for (let j = 0; j < n; j++) { const a = (j + 0.5) / n * 2 * Math.PI; push(c.x + Math.cos(a) * r0, c.y + Math.sin(a) * r0, g); }
+        return;
+      }
+      const n = clamp(Math.round(len(s.pts) / spacing), 3, 60), pts = resample(s.pts, n);
+      for (let j = 0; j < n; j++) {
+        const a = pts[Math.max(0, j - 1)], b = pts[Math.min(n - 1, j + 1)];
+        let tx = b.x - a.x, ty = b.y - a.y; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+        for (const side of [1, -1]) push(pts[j].x - ty * side * lambda * 0.7, pts[j].y + tx * side * lambda * 0.7, g);
+      }
+    });
+    $("rMode").textContent = rays.length + " rays";
+  }
+  function guide(src, x, y) {
+    let re = 0, im = 0, gxr = 0, gxi = 0, gyr = 0, gyi = 0;
+    for (let i = 0; i < src.length; i += 5) {
+      const dx = x - src[i], dy = y - src[i + 1], d = Math.hypot(dx, dy) + 1e-6, r = d + 1.5, k = src[i + 2];
+      const ph = k * r + src[i + 4], m = src[i + 3] / Math.sqrt(r), fr = m * Math.cos(ph), fi = m * Math.sin(ph);
+      re += fr; im += fi;
+      const dre = -fr / (2 * r) - fi * k, dim = fr * k - fi / (2 * r), ux = dx / d, uy = dy / d;
+      gxr += dre * ux; gxi += dim * ux; gyr += dre * uy; gyi += dim * uy;
+    }
+    return [re * gxi - im * gxr, re * gyi - im * gyr, re * re + im * im];
+  }
+  const RAY_STEP = 1.5, RAY_MAX = 1500;
+  function advanceRays(budgetMs) {
+    if (!rays.length) return;
+    const t0 = performance.now();
+    lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    lctx.strokeStyle = "#f4f5f8"; lctx.lineCap = "round"; lctx.lineJoin = "round";
+    let live = false;
+    for (let c = 0; c < rays.length; c++) {
+      const ray = rays[(rayCursor + c) % rays.length];
+      if (!ray.alive) continue;
+      live = true;
+      const src = rayGroups.get(ray.g);
+      for (let s = 0; s < 6 && ray.alive; s++) {
+        let [vx, vy] = guide(src, ray.x, ray.y); let vl = Math.hypot(vx, vy);
+        if (!(vl > 0)) { ray.alive = false; break; }
+        const mx = ray.x + vx / vl * RAY_STEP * 0.5, my = ray.y + vy / vl * RAY_STEP * 0.5;    // midpoint (RK2)
+        const G = guide(src, mx, my); vl = Math.hypot(G[0], G[1]);
+        if (!(vl > 0)) { ray.alive = false; break; }
+        const ux = G[0] / vl, uy = G[1] / vl;
+        // a ray that has wandered into a dark node (a phase vortex) has no direction worth drawing: end it there
+        if (G[2] < norm * 0.0015 || (ray.steps > 2 && ux * ray.dx + uy * ray.dy < 0)) { ray.alive = false; break; }
+        ray.dx = ux; ray.dy = uy;
+        const nx = ray.x + ux * RAY_STEP, ny = ray.y + uy * RAY_STEP;
+        const w = clamp(0.6 + 1.9 * Math.sqrt(G[2] / norm), 0.6, 2.6);
+        ray.w += (w - ray.w) * 0.35;
+        lctx.lineWidth = ray.w; lctx.beginPath(); lctx.moveTo(ray.x, ray.y); lctx.lineTo(nx, ny); lctx.stroke();
+        ray.x = nx; ray.y = ny; ray.steps++;
+        if (nx < -4 || ny < -4 || nx > W + 4 || ny > H + 4 || ray.steps > RAY_MAX) ray.alive = false;
+      }
+      // out of time: the next frame starts where this one stopped, so every ray gets its turn
+      if (performance.now() - t0 > budgetMs) { rayCursor = (rayCursor + c + 1) % rays.length; return; }
+    }
+    if (!live) rays = [];
+  }
+
+  const LAWS = {
+    basin: ["Born rule", "Brightness is |ψ|², the chance a photon lands here. Three inks cut the field at fixed levels.", "I(x) = |Σ e<sup>ikr</sup> / √r|²"],
+    mono: ["Born rule", "Black or white: is |ψ|² above one threshold.", "I(x) = |Σ e<sup>ikr</sup> / √r|²"],
+    contour: ["Born rule", "Isolines of |ψ|, like a topographic map of the probability.", "I(x) = |Σ e<sup>ikr</sup> / √r|²"],
+    photons: ["Born rule, one photon at a time", "Each dot is one measurement sampled from |ψ|². The fringes only appear in the crowd.", "P(x) = |ψ(x)|²"],
+    rays: ["de Broglie–Bohm guidance", "Each line follows the phase of ψ. Lines never cross; they bunch where the fringes are bright. Tag a slit and its lines stop listening to the others.", "dx/dt ∝ ∇S, &nbsp;ψ = |ψ| e<sup>iS</sup>"],
+    fronts: ["Huygens–Fresnel", "Lines of constant phase: the wavefronts. Line weight is the amplitude |ψ|, so dark fringes cut every front.", "S(x) = 2πm"],
+  };
+  function legend() {
+    const key = dir === "lines" ? lineRender : photonsOn ? "photons" : render, L = LAWS[key];
+    $("law").textContent = L[0]; $("gloss").textContent = L[1]; $("formula").innerHTML = L[2];
+  }
+
+  // ---------- photons: Born-rule detections, one at a time ----------
+  function resetPhotons() {
+    detections = 0; cdf = null;
+    pctx.setTransform(1, 0, 0, 1, 0, 0); pctx.clearRect(0, 0, photonCv.width, photonCv.height);
+    if (!photonsOn || !lastI) return;
+    const { I } = lastI; cdf = new Float64Array(I.length); let acc = 0;
+    for (let i = 0; i < I.length; i++) { acc += I[i]; cdf[i] = acc; }
+  }
+  function uniform() {
+    if ($("bits").value === "moth") {
+      if (photonPool.length < 2) { refillBits(); return null; }
+      return (photonPool.pop() * 4096 + photonPool.pop()) / 16777216;
+    }
+    const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] / 4294967296;
+  }
+  function detect(n) {
+    if (!cdf) return;
+    const { w } = lastI, total = cdf[cdf.length - 1];
+    pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pctx.fillStyle = "rgba(244,245,248,0.85)";
+    for (let k = 0; k < n; k++) {
+      const u1 = uniform(); if (u1 == null) return; const u2 = uniform() ?? Math.random(); const u3 = uniform() ?? Math.random();
+      let lo = 0, hi = cdf.length - 1; const target = u1 * total;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < target) lo = mid + 1; else hi = mid; }
+      const x = ((lo % w) + u2) / RAW_SCALE, y = (Math.floor(lo / w) + u3) / RAW_SCALE;
+      pctx.fillRect(x - 0.6, y - 0.6, 1.2, 1.2);
+      detections++;
+    }
+    $("rMode").textContent = detections.toLocaleString("en-US");
+  }
+  function extractCounts(o, d = 0) {
+    if (!o || typeof o !== "object" || d > 6) return null;
+    const keys = Object.keys(o);
+    if (keys.length && keys.every((k) => /^[01]+$/.test(k)) && keys.every((k) => typeof o[k] === "number")) return o;
+    for (const v of Object.values(o)) { const f = extractCounts(v, d + 1); if (f) return f; }
+    return null;
+  }
+  async function refillBits() {
+    if (fetchingBits) return; fetchingBits = true;
+    const url = $("proxyUrl").value.trim();
+    try {
+      if (!url) throw new Error("add your proxy URL");
+      status("measuring a 12-qubit graph state on Moth…");
+      let r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ engine: "graph-v1", params: { mode: "emu", num_qubits: 12, shots: 1024 } }) });
+      let j = await r.json();
+      while (r.status === 202) { await new Promise((res) => setTimeout(res, 2000)); r = await fetch(url + "?job=" + encodeURIComponent(j.job_id)); j = await r.json(); }
+      if (!r.ok) throw new Error(j.error || "proxy returned " + r.status);
+      const counts = extractCounts(j.result ?? j); if (!counts) throw new Error("no bitstring counts in the result");
+      for (const [b, c] of Object.entries(counts)) for (let i = 0; i < c; i++) photonPool.push(parseInt(b, 2) & 4095);
+      for (let i = photonPool.length - 1; i > 0; i--) { const k = Math.floor(Math.random() * (i + 1)); [photonPool[i], photonPool[k]] = [photonPool[k], photonPool[i]]; }
+      status(`${photonPool.length} measured outcomes in the pool`);
+    } catch (e) {
+      status("Moth bits unavailable: " + e.message + ". Using local randomness.");
+      $("bits").value = "local"; $("proxyUrl").hidden = true;
+    } finally { fetchingBits = false; }
+  }
+
+  // ---------- overlay: the instrument plate ----------
+  function drawOverlay() {
+    octx.setTransform(dpr, 0, 0, dpr, 0, 0); octx.clearRect(0, 0, W, H);
+    // edge ticks
+    octx.fillStyle = "rgba(244,245,248,0.28)";
+    for (let x = 0; x <= W; x += 20) { const L = x % 200 === 0 ? 9 : x % 100 === 0 ? 6 : 3; octx.fillRect(x, 0, 1, L); octx.fillRect(x, H - L, 1, L); }
+    for (let y = 0; y <= H; y += 20) { const L = y % 200 === 0 ? 9 : y % 100 === 0 ? 6 : 3; octx.fillRect(0, y, L, 1); octx.fillRect(W - L, y, L, 1); }
+    octx.font = "10px 'IBM Plex Mono', monospace"; octx.textBaseline = "top";
+    // strokes (slits)
+    strokes.forEach((s, i) => {
+      octx.lineCap = "round"; octx.lineJoin = "round";
+      octx.strokeStyle = "#000"; octx.lineWidth = 6; octx.setLineDash([]);
+      path(s.pts);
+      octx.strokeStyle = s.tagged ? "#ff3d6e" : "#f4f5f8"; octx.lineWidth = dir === "lines" ? 4 : 2;
+      octx.setLineDash(s.tagged ? [5, 5] : []); path(s.pts); octx.setLineDash([]);
+      const p = s.pts[0];
+      const label = `s${i + 1}  λ ${(2 * Math.PI / s.k).toFixed(1)}${s.tagged ? "  ⊗ tagged" : ""}`;
+      octx.fillStyle = "rgba(0,0,0,0.75)"; const tw = octx.measureText(label).width;
+      octx.fillRect(p.x + 8, p.y - 18, tw + 8, 14);
+      octx.fillStyle = s.tagged ? "#ff3d6e" : "#f4f5f8"; octx.fillText(label, p.x + 12, p.y - 16);
+    });
+    // secondary sources
+    for (const g of genSources) {
+      octx.strokeStyle = "rgba(244,245,248,0.9)"; octx.lineWidth = 1;
+      octx.beginPath(); octx.moveTo(g.x - 5, g.y); octx.lineTo(g.x + 5, g.y); octx.moveTo(g.x, g.y - 5); octx.lineTo(g.x, g.y + 5); octx.stroke();
+      octx.fillStyle = "rgba(244,245,248,0.75)"; octx.fillText(String(g.gen), g.x + 5, g.y + 3);
+    }
+    if (drawing && drawing.pts.length > 1) { octx.strokeStyle = "#f4f5f8"; octx.lineWidth = 2; path(drawing.pts); }
+  }
+  function path(pts) { octx.beginPath(); octx.moveTo(pts[0].x, pts[0].y); for (let i = 1; i < pts.length; i++) octx.lineTo(pts[i].x, pts[i].y); octx.stroke(); }
+
+  function readout(src) {
+    $("rSources").textContent = src.length;
+    const tagged = strokes.filter((s) => s.tagged).length;
+    $("rGroups").textContent = strokes.length ? `${tagged ? 1 + tagged + " groups" : "all"}${tagged ? ` · ${tagged} tagged` : ""}` : "–";
+    $("rN").textContent = depth;
+    const ls = strokes.map((s) => 2 * Math.PI / s.k);
+    $("rLambda").textContent = ls.length ? `${Math.min(...ls).toFixed(1)}–${Math.max(...ls).toFixed(1)} px` : "–";
+    $("rModeCap").textContent = photonsOn ? "detections" : dir === "lines" && lineRender === "rays" ? "lines" : "render";
+    $("rMode").textContent = photonsOn ? detections.toLocaleString("en-US") : dir === "lines" ? (lineRender === "rays" ? rays.length + " rays" : "fronts") : render;
+  }
+  let statusTimer = 0;
+  function status(t) { $("status").textContent = t; clearTimeout(statusTimer); statusTimer = setTimeout(() => ($("status").textContent = ""), 4200); }
+
+  // ---------- sizing ----------
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    S = Math.min(dpr, 1.5) * 0.85;
+    fieldCv.width = Math.round(W * S); fieldCv.height = Math.round(H * S);
+    for (const c of [ov, photonCv, lineCv]) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+    recompute();
+  }
+
+  // ---------- input ----------
+  const pos = (e) => ({ x: e.clientX, y: e.clientY });
+  ov.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    if (tool === "tag") {
+      const p = pos(e); let best = null, bd = 22;
+      strokes.forEach((s) => s.pts.forEach((q) => { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; best = s; } }));
+      if (best) { best.tagged = !best.tagged; status(best.tagged ? "which-path known for that slit: its fringes with the others vanish" : "tag removed"); recompute(); }
+      return;
+    }
+    ov.setPointerCapture(e.pointerId);
+    drawing = { pts: [pos(e)], t0: performance.now() };
+  });
+  ov.addEventListener("pointermove", (e) => {
+    if (!drawing) return;
+    const p = pos(e), q = drawing.pts[drawing.pts.length - 1];
+    if (Math.hypot(p.x - q.x, p.y - q.y) > 2) { drawing.pts.push(p); drawOverlay(); }
+  });
+  const finish = () => {
+    if (!drawing) return;
+    const d = drawing; drawing = null;
+    const L = len(d.pts);
+    if (d.pts.length < 2 || L < 6) { drawOverlay(); return; }
+    const speed = L / Math.max(60, performance.now() - d.t0);      // px per ms
+    const lambda = clamp(20 - speed * 7, 7, 20);                   // slow hand, long wave
+    const sm = chaikin(d.pts, 2);
+    strokes.push({ pts: resample(sm, clamp(Math.round(len(sm) / 3), 2, 400)), k: 2 * Math.PI / lambda, tagged: false, id: nextId++ });
+    recompute();
+  };
+  ov.addEventListener("pointerup", finish); ov.addEventListener("pointercancel", finish);
+
+  function setTool(t) { tool = t; document.body.dataset.tool = t; $("tDraw").setAttribute("aria-pressed", t === "draw"); $("tTag").setAttribute("aria-pressed", t === "tag"); }
+  $("tDraw").onclick = () => setTool("draw");
+  $("tTag").onclick = () => setTool("tag");
+  $("tErase").onclick = eraseTags;
+  function eraseTags() {
+    if (!strokes.some((s) => s.tagged)) { status("nothing tagged. Tag a slit first, then erase the information"); return; }
+    strokes.forEach((s) => (s.tagged = false)); status("which-path information erased: the fringes return"); recompute();
+  }
+  function setDepth(n) { depth = clamp(n, 0, 4); $("nval").textContent = depth; store.set("hp.depth", depth); recompute(); }
+  $("nDown").onclick = () => setDepth(depth - 1);
+  $("nUp").onclick = () => setDepth(depth + 1);
+  function setRender(r) { render = r; document.querySelectorAll("[data-r]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.r === r)); store.set("hp.render", r); if (photonsOn) setPhotons(false); drawField(); readout(buildSources()); }
+  document.querySelectorAll("[data-r]").forEach((b) => (b.onclick = () => setRender(b.dataset.r)));
+  function setPhotons(on) {
+    photonsOn = on; $("tPhotons").setAttribute("aria-pressed", on); $("bitsGroup").hidden = !on;
+    drawField(); resetPhotons(); readout(buildSources());
+    if (on) status("each dot is one detection, drawn from |ψ|²");
+  }
+  $("tPhotons").onclick = () => setPhotons(!photonsOn);
+  function setDir(d) {
+    dir = d; store.set("hp.dir", d);
+    document.querySelectorAll("[data-dir]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.dir === d));
+    $("fieldGroup").hidden = d !== "field"; $("linesGroup").hidden = d !== "lines";
+    if (d === "lines" && photonsOn) { photonsOn = false; $("tPhotons").setAttribute("aria-pressed", false); $("bitsGroup").hidden = true; resetPhotons(); }
+    drawField(); startRays(); drawOverlay(); readout(buildSources());
+  }
+  document.querySelectorAll("[data-dir]").forEach((b) => (b.onclick = () => setDir(b.dataset.dir)));
+  function setLines(l) {
+    lineRender = l; store.set("hp.lines", l);
+    document.querySelectorAll("[data-l]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.l === l));
+    drawField(); startRays(); readout(buildSources());
+  }
+  document.querySelectorAll("[data-l]").forEach((b) => (b.onclick = () => setLines(b.dataset.l)));
+  $("bits").onchange = () => { const m = $("bits").value === "moth"; $("proxyUrl").hidden = !m; if (m && !$("proxyUrl").value) $("proxyUrl").focus(); };
+  $("proxyUrl").onchange = () => store.set("hp.proxy", $("proxyUrl").value.trim());
+  $("tClear").onclick = () => { strokes = []; genSources = []; recompute(); status("blank plate. Draw a slit"); };
+  addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT") return;
+    const k = e.key.toLowerCase();
+    if (k === "d") setTool("draw"); else if (k === "t") setTool("tag"); else if (k === "e") eraseTags();
+    else if (k === "+" || k === "=") setDepth(depth + 1); else if (k === "-") setDepth(depth - 1);
+    else if (k === "p") { if (dir === "field") setPhotons(!photonsOn); } else if (k === "c") $("tClear").click();
+    else if (k === "f") setDir("field"); else if (k === "l") setDir("lines");
+  });
+  addEventListener("resize", () => { clearTimeout(resize.t); resize.t = setTimeout(resize, 120); });
+
+  // ---------- loop ----------
+  function tick() {
+    if (photonsOn && cdf && detections < 400000) detect(detections < 4000 ? 120 : 700);
+    if (rays.length) advanceRays(14);
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- open on a double slit ----------
+  function seed() {
+    // the textbook double slit: two short openings on one line, a few wavelengths apart
+    const cx = innerWidth * (innerWidth < 600 ? 0.5 : 0.36), cy = innerHeight * 0.5, gap = 34, half = 9;
+    const slit = (y) => { const p = []; for (let i = 0; i <= 12; i++) p.push({ x: cx, y: y - half + (i / 12) * 2 * half }); return p; };
+    strokes = [
+      { pts: slit(cy - gap), k: 2 * Math.PI / 11, tagged: false, id: nextId++ },
+      { pts: slit(cy + gap), k: 2 * Math.PI / 11, tagged: false, id: nextId++ },
+    ];
+  }
+
+
+  if (!gl) { status("This browser has no WebGL2, which the field needs."); return; }
+  initGL();
+  const r = store.get("hp.render"); if (r && ["basin", "mono", "contour"].includes(r)) { render = r; document.querySelectorAll("[data-r]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.r === r)); }
+  const dn = +store.get("hp.depth"); if (dn >= 0 && dn <= 4 && store.get("hp.depth") !== null) depth = dn;
+  $("nval").textContent = depth;
+  const sd = store.get("hp.dir"), sl = store.get("hp.lines");
+  if (sl === "rays" || sl === "fronts") { lineRender = sl; document.querySelectorAll("[data-l]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.l === sl)); }
+  if (sd === "lines") { dir = "lines"; document.querySelectorAll("[data-dir]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.dir === "lines")); $("fieldGroup").hidden = true; $("linesGroup").hidden = false; }
+  $("proxyUrl").value = store.get("hp.proxy") || "";
+  seed();
+  resize();
+  requestAnimationFrame(tick);
+})();
+</script>

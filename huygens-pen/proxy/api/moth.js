@@ -1,9 +1,10 @@
-// Vercel function that keeps the Moth API key server-side.
+// Vercel function that keeps the Moth API key server-side. Huygens Pen uses it for measured bits:
+// a graph-v1 state measured in the Z basis gives uniform random bitstrings, one photon position per shot.
 // POST { engine, params }  -> submits a job, waits up to ~25s, returns { status, job_id, result }
 //                             or 202 { status: "pending", job_id } if the job is still running.
 // GET  ?job=<id>           -> 200 { status: "completed", job_id, result } or 202 while pending.
 const BASE = "https://api.mothquantum.com/api/v1";
-const ENGINES = new Set(["otoc-echo-v1", "coin-toss-v1"]);
+const ENGINES = new Set(["graph-v1", "coin-toss-v1"]);
 const WAIT_MS = 25000;
 
 export const config = { maxDuration: 60 };
@@ -53,7 +54,7 @@ export default async function handler(req, res) {
       return res.status(out.code).json(out.body);
     }
     if (req.method !== "POST") return res.status(405).json({ error: "Use POST" });
-    const { engine = "otoc-echo-v1", params = {} } = req.body || {};
+    const { engine = "graph-v1", params = {} } = req.body || {};
     if (!ENGINES.has(engine)) return res.status(400).json({ error: `Engine ${engine} is not allowed` });
     const { job_id } = await moth(`/engines/${engine}/process`, { method: "POST", body: JSON.stringify({ params }) });
     const out = await settle(job_id, Date.now() + WAIT_MS);
