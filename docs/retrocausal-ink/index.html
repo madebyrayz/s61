@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Retrocausal Ink</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@1,6..72,400;1,6..72,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+/* Layout: one full-bleed sheet of paper; a quiet header top-left, the last echo top-right, controls along the bottom edge. */
+:root {
+  --paper: #eceef2;
+  --ink: #161a2b;
+  --muted: #646b7d;
+  --rule: #cfd3dc;
+  --wave: #3346c9;
+  --neg: #b42a6c;
+  --witness: #8c93a3;
+  --panel: rgba(236, 238, 242, 0.86);
+  --f-display: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --f-body: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f1117; --ink: #e4e6ee; --muted: #8b92a4; --rule: #262a36;
+    --wave: #8394ff; --neg: #ff6fae; --witness: #5d6475; --panel: rgba(15, 17, 23, 0.84);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f1117; --ink: #e4e6ee; --muted: #8b92a4; --rule: #262a36;
+  --wave: #8394ff; --neg: #ff6fae; --witness: #5d6475; --panel: rgba(15, 17, 23, 0.84);
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: var(--f-body); font-size: 14px; overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+#sheet { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; display: block; }
+.hud {
+  position: fixed; pointer-events: none; display: flex; flex-direction: column; gap: 6px;
+}
+.hud > * { pointer-events: auto; }
+#head {
+  top: calc(env(safe-area-inset-top, 0px) + 18px);
+  left: max(16px, env(safe-area-inset-left, 0px)); max-width: min(380px, calc(100vw - 32px));
+}
+h1 {
+  margin: 0; font-family: var(--f-display); font-style: italic; font-weight: 500;
+  font-size: 30px; line-height: 1; letter-spacing: -0.01em; text-wrap: balance;
+}
+.lede { margin: 0; color: var(--muted); line-height: 1.45; max-width: 34ch; }
+#status {
+  font-family: var(--f-mono); font-size: 12px; color: var(--ink);
+  display: flex; align-items: center; gap: 8px; min-height: 18px;
+}
+#status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rule); flex: none; }
+#status.busy .dot { background: var(--wave); animation: pulse 0.9s ease-in-out infinite; }
+#status.err .dot { background: var(--neg); }
+@keyframes pulse { 50% { opacity: 0.25; } }
+
+#echo {
+  top: calc(env(safe-area-inset-top, 0px) + 18px);
+  right: max(16px, env(safe-area-inset-right, 0px));
+  width: 236px; background: var(--panel); border: 1px solid var(--rule);
+  padding: 10px 12px 8px; backdrop-filter: blur(6px);
+}
+.label {
+  font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+}
+#echo svg { display: block; width: 100%; height: 86px; }
+#echo .src { font-family: var(--f-mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+#bar {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+  left: max(16px, env(safe-area-inset-left, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px;
+}
+button, select, input[type="text"] {
+  font: 500 12.5px/1 var(--f-body); color: var(--ink); background: var(--panel);
+  border: 1px solid var(--rule); padding: 8px 11px; border-radius: 2px;
+  backdrop-filter: blur(6px);
+}
+button { cursor: pointer; }
+button:hover, select:hover { border-color: var(--muted); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--wave); outline-offset: 1px; }
+#witnessBtn[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+kbd { font-family: var(--f-mono); font-size: 11px; opacity: 0.7; }
+.field { display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--rule); padding: 3px 4px 3px 9px; backdrop-filter: blur(6px); }
+input[type="range"] { accent-color: var(--wave); }
+.field select, .field input { border: 0; background: transparent; backdrop-filter: none; padding: 5px 4px; }
+.field .label { white-space: nowrap; }
+#proxyUrl { width: 220px; font-family: var(--f-mono); font-size: 11.5px; }
+.spacer { flex: 1; }
+@media (max-width: 640px) {
+  #echo { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 158px); width: 180px; padding: 8px 10px 6px; }
+  #echo svg { height: 52px; }
+  h1 { font-size: 25px; }
+  .lede { font-size: 13px; }
+  #proxyUrl { width: 150px; }
+  .spacer { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { #status.busy .dot { animation: none; } }
+</style>
+
+<canvas id="sheet" aria-label="Drawing surface. Draw with mouse, pen or finger."></canvas>
+
+<header id="head" class="hud">
+  <h1>Retrocausal Ink</h1>
+  <p class="lede">Every new stroke is sent back through a quantum echo. When it returns, it rewrites the strokes you made before it.</p>
+  <div id="status" role="status"><span class="dot"></span><span id="statusText">Five sample strokes. Draw anything.</span></div>
+</header>
+
+<aside id="echo" class="hud" aria-label="Last echo">
+  <div class="label">Last echo · tap map</div>
+  <svg id="taps" viewBox="0 0 212 86" role="img" aria-label="Signed tap amplitudes per site"></svg>
+  <div class="src" id="echoSrc">no echo yet</div>
+</aside>
+
+<nav id="bar" class="hud" aria-label="Controls">
+  <button id="witnessBtn" aria-pressed="false" title="Hold to see what you actually drew">Witness <kbd>hold W</kbd></button>
+  <div class="field">
+    <label class="label" for="negMode">Negative tap</label>
+    <select id="negMode">
+      <option value="invert">invert</option>
+      <option value="reverse">reverse</option>
+      <option value="rotate">rotate</option>
+    </select>
+  </div>
+  <div class="field">
+    <label class="label" for="strength">Strength</label>
+    <input id="strength" type="range" min="0.2" max="2" step="0.1" value="1">
+  </div>
+  <div class="field">
+    <label class="label" for="source">Echo</label>
+    <select id="source">
+      <option value="sim">simulated</option>
+      <option value="moth">Moth · otoc-echo-v1</option>
+    </select>
+    <input id="proxyUrl" type="text" placeholder="https://your-proxy.vercel.app/api/echo" hidden aria-label="Proxy URL">
+  </div>
+  <span class="spacer"></span>
+  <button id="clearBtn">Clear sheet</button>
+</nav>
+
+<script>
+(() => {
+  "use strict";
+  const cv = document.getElementById("sheet");
+  const ctx = cv.getContext("2d");
+  const $ = (id) => document.getElementById(id);
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const N_SITES = 8;           // qubit chain length = strokes reached per echo
+  const STEP_MS = reduced ? 40 : 170;   // how long the echo takes to travel one stroke back
+  const MORPH_MS = reduced ? 150 : 1100;
+
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  };
+
+  let W = 0, H = 0, dpr = 1;
+  let strokes = [];            // chronological
+  let drawing = null;
+  let arcs = [];
+  let witness = false;
+  let pending = 0;
+  let nextId = 1;
+  let colors = {};
+
+  function readColors() {
+    const cs = getComputedStyle(document.documentElement);
+    for (const k of ["ink", "wave", "neg", "witness", "paper", "muted"]) colors[k] = cs.getPropertyValue("--" + k).trim();
+  }
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const r = cv.getBoundingClientRect();
+    W = r.width; H = r.height;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // ---------- geometry ----------
+  const clone = (pts) => pts.map((p) => ({ x: p.x, y: p.y }));
+  function centroid(pts) {
+    let x = 0, y = 0; for (const p of pts) { x += p.x; y += p.y; }
+    return { x: x / pts.length, y: y / pts.length };
+  }
+  function pathLength(pts) {
+    let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    return L;
+  }
+  function resample(pts, n) {
+    const L = pathLength(pts); if (L === 0 || pts.length < 2) return Array.from({ length: n }, () => ({ ...pts[0] }));
+    const out = [{ ...pts[0] }]; const step = L / (n - 1); let acc = 0;
+    for (let i = 1, prev = pts[0]; i < pts.length && out.length < n; i++) {
+      let cur = pts[i]; let d = Math.hypot(cur.x - prev.x, cur.y - prev.y);
+      while (acc + d >= step && out.length < n) {
+        const t = (step - acc) / d;
+        const q = { x: prev.x + (cur.x - prev.x) * t, y: prev.y + (cur.y - prev.y) * t };
+        out.push(q); prev = q; d = Math.hypot(cur.x - prev.x, cur.y - prev.y); acc = 0;
+      }
+      acc += d; prev = cur;
+    }
+    while (out.length < n) out.push({ ...pts[pts.length - 1] });
+    return out;
+  }
+  function bboxDiag(pts) {
+    let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+    for (const p of pts) { a = Math.min(a, p.x); b = Math.min(b, p.y); c = Math.max(c, p.x); d = Math.max(d, p.y); }
+    return Math.max(12, Math.hypot(c - a, d - b));
+  }
+  function turning(pts) {
+    let T = 0;
+    for (let i = 2; i < pts.length; i++) {
+      const a1 = Math.atan2(pts[i - 1].y - pts[i - 2].y, pts[i - 1].x - pts[i - 2].x);
+      const a2 = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x);
+      let d = a2 - a1; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
+      T += Math.abs(d);
+    }
+    return T;
+  }
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+  // Points a stroke shows right now (mid-morph aware).
+  function shown(s, now) {
+    if (!s.anim) return s.pts;
+    const t = clamp((now - s.anim.start) / MORPH_MS, 0, 1);
+    if (t <= 0) return s.anim.from;
+    if (t >= 1) { s.pts = s.anim.to; s.anim = null; return s.pts; }
+    const k = ease(t);
+    return s.anim.from.map((p, i) => ({ x: p.x + (s.anim.to[i].x - p.x) * k, y: p.y + (s.anim.to[i].y - p.y) * k }));
+  }
+
+  // ---------- stroke -> circuit params ----------
+  function featuresToParams(s) {
+    const L = pathLength(s.pts);
+    const dur = Math.max(80, s.t1 - s.t0);
+    const speed = L / dur; // px per ms
+    const turn = turning(resample(s.pts, 48));
+    const dx = s.pts[s.pts.length - 1].x - s.pts[0].x, dy = s.pts[s.pts.length - 1].y - s.pts[0].y;
+    return {
+      n_sites: N_SITES,
+      depth: Math.round(clamp(4 + L / 110, 4, 16)),
+      theta_x: +clamp(0.35 + speed * 0.55, 0.2, 1.5).toFixed(3),
+      theta_zz: +clamp(0.45 + turn / (2 * Math.PI) * 0.35, 0.3, 1.5).toFixed(3),
+      kick: Math.abs(dx) >= Math.abs(dy) ? "Z" : "X",
+      include_taps: true,
+    };
+  }
+
+  // ---------- echo sources ----------
+  // Offline stand-in shaped like an OTOC echo: a front spreading down the chain
+  // (faster with stronger coupling), complex phases, some negative taps.
+  function simulateEcho(params) {
+    const front = clamp(params.depth * params.theta_zz * 0.32, 1, N_SITES);
+    const taps = [];
+    for (let k = 0; k < N_SITES; k++) {
+      const env = Math.exp(-Math.pow(Math.max(0, k - front), 2) / 3) * (0.35 + 0.65 * Math.exp(-k / (front + 1)));
+      const r = clamp(env * (0.55 + Math.random() * 0.6), 0, 1);
+      const phi = k * params.theta_x * 1.7 + (Math.random() - 0.5) * 2.4 + (params.kick === "X" ? Math.PI / 2 : 0);
+      taps.push({ re: r * Math.cos(phi), im: r * Math.sin(phi) });
+    }
+    const wait = reduced ? 300 : 1200 + Math.random() * 1400;
+    return new Promise((res) => setTimeout(() => res({ taps, source: "simulated" }), wait));
+  }
+
+  // Accept whatever tap-map shape the engine returns; first array under a key containing "tap".
+  function findTapArray(o, depth = 0) {
+    if (!o || typeof o !== "object" || depth > 6) return null;
+    for (const [k, v] of Object.entries(o)) if (/tap/i.test(k) && Array.isArray(v) && v.length) return v;
+    for (const v of Object.values(o)) { const f = findTapArray(v, depth + 1); if (f) return f; }
+    return null;
+  }
+  function toComplex(t) {
+    if (typeof t === "number") return { re: t, im: 0 };
+    if (Array.isArray(t)) return { re: +t[0] || 0, im: +t[1] || 0 };
+    if (t && typeof t === "object") {
+      if ("re" in t || "real" in t) return { re: +(t.re ?? t.real) || 0, im: +(t.im ?? t.imag ?? 0) || 0 };
+      const amp = t.amp ?? t.amplitude ?? t.level ?? t.mag ?? t.gain ?? t.value;
+      if (amp != null) {
+        const ph = +(t.phase ?? t.arg ?? 0) || 0; const sign = t.sign != null ? Math.sign(+t.sign) || 1 : 1;
+        if (typeof amp === "object") return toComplex(amp);
+        return { re: sign * amp * Math.cos(ph), im: sign * amp * Math.sin(ph) };
+      }
+    }
+    return { re: 0, im: 0 };
+  }
+  function normalizeTaps(json) {
+    const arr = findTapArray(json);
+    if (!arr) throw new Error("No tap map in the engine result");
+    const idx = (t) => (t && typeof t === "object" && !Array.isArray(t)) ? (t.site ?? t.index ?? t.delay ?? t.tap ?? null) : null;
+    const sorted = arr.every((t) => idx(t) != null) ? [...arr].sort((a, b) => idx(a) - idx(b)) : arr;
+    let taps = sorted.map(toComplex);
+    const m = Math.max(1e-9, ...taps.map((t) => Math.hypot(t.re, t.im)));
+    if (m > 1.5) taps = taps.map((t) => ({ re: t.re / m, im: t.im / m }));
+    return taps;
+  }
+  async function mothEcho(params) {
+    const url = $("proxyUrl").value.trim();
+    if (!url) throw new Error("Add your proxy URL first");
+    let r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ engine: "otoc-echo-v1", params }) });
+    let j = await r.json().catch(() => ({}));
+    if (!r.ok && r.status !== 202) throw new Error(j.detail || j.error || "Proxy returned " + r.status);
+    const t0 = performance.now();
+    while (r.status === 202 || j.status === "pending") {
+      if (performance.now() - t0 > 180000) throw new Error("Echo took longer than 3 minutes");
+      await new Promise((res) => setTimeout(res, 2000));
+      r = await fetch(url + (url.includes("?") ? "&" : "?") + "job=" + encodeURIComponent(j.job_id));
+      j = await r.json().catch(() => ({}));
+      if (!r.ok && r.status !== 202) throw new Error(j.detail || j.error || "Proxy returned " + r.status);
+    }
+    return { taps: normalizeTaps(j.result ?? j), source: "measured · otoc-echo-v1", job: j.job_id };
+  }
+
+  // ---------- the rewrite ----------
+  function deform(s, tap, kick, now, mode) {
+    const base = s.anim ? s.anim.to : s.pts;
+    const from = shown(s, now).map((p) => ({ ...p }));
+    let mag = Math.hypot(tap.re, tap.im) * (+$("strength").value) * (1 + 0.6 * s.recall);
+    s.recall = 0;
+    if (mag < 0.02) return 0;
+    mag = Math.min(mag, 1.6);
+    const phi = Math.atan2(tap.im, tap.re);
+    const n = base.length;
+    const c = centroid(base), size = bboxDiag(base);
+    // 1. the present leaks in: pull toward the new stroke's shape, re-centred and re-scaled onto this one
+    const kc = centroid(kick), ks = bboxDiag(kick);
+    const ghost = resample(kick, n).map((p) => ({ x: c.x + (p.x - kc.x) * size / ks, y: c.y + (p.y - kc.y) * size / ks }));
+    let pts = base.map((p, i) => ({ x: p.x + (ghost[i].x - p.x) * 0.3 * Math.min(mag, 1), y: p.y + (ghost[i].y - p.y) * 0.3 * Math.min(mag, 1) }));
+    // 2. a standing wave along the stroke, phase from the tap
+    const amp = Math.min(46, size * 0.09 * mag);
+    pts = pts.map((p, i) => {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+      let nx = -(b.y - a.y), ny = b.x - a.x; const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
+      const d = amp * Math.sin(2 * Math.PI * 1.5 * (i / (n - 1)) + phi);
+      return { x: p.x + nx * d, y: p.y + ny * d };
+    });
+    // 3. rotation about the centroid, angle from the tap's phase
+    let theta = mag * Math.sin(phi) * 0.55;
+    // 4. negative taps: invert / reverse / rotate
+    const negative = tap.re < 0 && mag > 0.12;
+    if (negative && mode === "rotate") theta += Math.PI * Math.min(mag, 1);
+    const cs = Math.cos(theta), sn = Math.sin(theta);
+    pts = pts.map((p) => ({ x: c.x + (p.x - c.x) * cs - (p.y - c.y) * sn, y: c.y + (p.x - c.x) * sn + (p.y - c.y) * cs }));
+    if (negative && mode === "invert") {
+      // mirror across the axis through the centroid perpendicular to the kick's direction
+      const a = kick[0], b = kick[kick.length - 1];
+      let ux = b.x - a.x, uy = b.y - a.y; const l = Math.hypot(ux, uy) || 1; ux /= l; uy /= l;
+      pts = pts.map((p) => { const d = (p.x - c.x) * ux + (p.y - c.y) * uy; return { x: p.x - 2 * d * ux, y: p.y - 2 * d * uy }; });
+    }
+    if (negative && mode === "reverse") { pts.reverse(); from.reverse(); s.reversed = !s.reversed; }
+    s.anim = { from, to: pts, start: now };
+    s.rewrites++;
+    return negative ? -mag : mag;
+  }
+
+  function applyEcho(kick, echo) {
+    const mode = $("negMode").value;
+    const idx = strokes.indexOf(kick);
+    const past = strokes.slice(0, idx < 0 ? strokes.length : idx);
+    const t0 = performance.now();
+    const taps = echo.taps;
+    let touched = 0;
+    for (let k = 1; k <= past.length; k++) {
+      const s = past[past.length - k];
+      // sites 1..n-1 reach the last n-1 strokes; older strokes inherit the far end of the chain, fading
+      let tap = taps[Math.min(k, taps.length - 1)] || { re: 0, im: 0 };
+      if (k >= taps.length) { const f = Math.pow(0.7, k - taps.length + 1); tap = { re: tap.re * f, im: tap.im * f }; }
+      const at = t0 + k * STEP_MS; // the echo travels backward at finite speed
+      setTimeout(() => {
+        if (!strokes.includes(s)) return;
+        const now = performance.now();
+        const m = deform(s, tap, kick.pts, now, mode);
+        s.flash = now;
+        if (m !== 0) arcs.push({ from: centroid(kick.pts), to: centroid(s.anim ? s.anim.to : s.pts), neg: m < 0, born: now, w: Math.abs(m) });
+      }, at - t0);
+      if (Math.hypot(tap.re, tap.im) >= 0.02) touched++;
+    }
+    drawTaps(taps, echo.source, echo.job);
+    return touched;
+  }
+
+  async function sendEcho(s) {
+    const params = featuresToParams(s);
+    s.params = params;
+    pending++; s.pendingSince = performance.now();
+    setStatus(`stroke ${s.id} · kick ${params.kick}, depth ${params.depth} · waiting for the echo…`, "busy");
+    try {
+      const echo = $("source").value === "moth" ? await mothEcho(params) : await simulateEcho(params);
+      s.pendingSince = 0; pending--;
+      if (!strokes.includes(s)) return;
+      const touched = applyEcho(s, echo);
+      setStatus(touched ? `echo from stroke ${s.id} is rewriting ${touched} earlier stroke${touched > 1 ? "s" : ""}` : `stroke ${s.id} landed. Nothing before it to rewrite yet.`, pending ? "busy" : "");
+    } catch (e) {
+      s.pendingSince = 0; pending--;
+      setStatus(e.message + ". Switch Echo to simulated to keep drawing.", "err");
+    }
+  }
+
+  // ---------- UI bits ----------
+  function setStatus(text, cls = "") {
+    $("statusText").textContent = text;
+    $("status").className = cls;
+  }
+  function drawTaps(taps, source, job) {
+    const svg = $("taps"), w = 212, h = 86, mid = h / 2, bw = w / N_SITES;
+    const ns = "http://www.w3.org/2000/svg";
+    svg.innerHTML = "";
+    const axis = document.createElementNS(ns, "line");
+    axis.setAttribute("x1", 0); axis.setAttribute("x2", w); axis.setAttribute("y1", mid); axis.setAttribute("y2", mid);
+    axis.setAttribute("stroke", "var(--rule)"); svg.appendChild(axis);
+    for (let k = 0; k < N_SITES; k++) {
+      const t = taps[k] || { re: 0, im: 0 };
+      const mag = Math.min(1, Math.hypot(t.re, t.im)); const neg = t.re < 0;
+      const bh = Math.max(1, mag * (mid - 12));
+      const r = document.createElementNS(ns, "rect");
+      r.setAttribute("x", k * bw + 4); r.setAttribute("width", bw - 8);
+      r.setAttribute("y", neg ? mid : mid - bh); r.setAttribute("height", bh);
+      r.setAttribute("fill", k === 0 ? "var(--wave)" : neg ? "var(--neg)" : "var(--ink)");
+      const tt = document.createElementNS(ns, "title");
+      tt.textContent = `${k === 0 ? "site 0 · the new stroke" : "site " + k + " · " + k + " stroke" + (k > 1 ? "s" : "") + " ago"}: |a| ${mag.toFixed(2)}, φ ${Math.atan2(t.im, t.re).toFixed(2)} rad`;
+      r.appendChild(tt); svg.appendChild(r);
+    }
+    for (const [x, txt, anchor] of [[2, "now", "start"], [w - 2, "7 ago", "end"]]) {
+      const tx = document.createElementNS(ns, "text");
+      tx.setAttribute("x", x); tx.setAttribute("y", h - 1); tx.setAttribute("text-anchor", anchor);
+      tx.setAttribute("fill", "var(--muted)"); tx.setAttribute("font-size", "9"); tx.setAttribute("font-family", "IBM Plex Mono, monospace");
+      tx.textContent = txt; svg.appendChild(tx);
+    }
+    $("echoSrc").textContent = source + (job ? " · job " + String(job).slice(0, 8) : "");
+  }
+
+  // ---------- render ----------
+  function strokePath(pts, widthFn, color) {
+    ctx.fillStyle = color;
+    for (let i = 1; i < pts.length; i++) {
+      const s = i / (pts.length - 1);
+      ctx.lineWidth = widthFn(s);
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.moveTo(pts[i - 1].x, pts[i - 1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
+    }
+  }
+  const taper = (s) => 4.2 * (1 - 0.78 * s) + 0.7; // heavy where the hand began, thin where it lifted
+
+  function frame(now) {
+    ctx.clearRect(0, 0, W, H);
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+
+    if (witness) {
+      ctx.save(); ctx.setLineDash([3, 4]);
+      for (const s of strokes) {
+        strokePath(s.orig, () => 1, colors.witness);
+        const cur = shown(s, now);
+        ctx.globalAlpha = 0.35; ctx.lineWidth = 0.6; ctx.strokeStyle = colors.witness;
+        for (let i = 0; i < s.orig.length; i += 9) { const j = Math.round(i * (cur.length - 1) / (s.orig.length - 1)); ctx.beginPath(); ctx.moveTo(s.orig[i].x, s.orig[i].y); ctx.lineTo(cur[j].x, cur[j].y); ctx.stroke(); }
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+    }
+
+    // arcs: who rewrote whom, pointing backward
+    arcs = arcs.filter((a) => now - a.born < 2600);
+    for (const a of arcs) {
+      const age = (now - a.born) / 2600;
+      ctx.globalAlpha = (1 - age) * 0.55; ctx.strokeStyle = a.neg ? colors.neg : colors.wave; ctx.lineWidth = 0.8 + a.w;
+      const mx = (a.from.x + a.to.x) / 2, my = (a.from.y + a.to.y) / 2, dx = a.to.x - a.from.x, dy = a.to.y - a.from.y;
+      ctx.beginPath(); ctx.moveTo(a.from.x, a.from.y); ctx.quadraticCurveTo(mx - dy * 0.25, my + dx * 0.25, a.to.x, a.to.y); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // a waiting echo: a pulse running backward through the history, one stroke at a time
+    const waiting = strokes.filter((s) => s.pendingSince);
+    for (let i = 0; i < strokes.length; i++) {
+      const s = strokes[i];
+      const pts = shown(s, now);
+      let glow = 0;
+      for (const w of waiting) {
+        const wi = strokes.indexOf(w); if (i > wi) continue;
+        const k = wi - i, period = (wi + 1) * STEP_MS + 500;
+        const ph = ((now - w.pendingSince) % period) - k * STEP_MS;
+        if (ph >= 0 && ph < 420) glow = Math.max(glow, 1 - ph / 420);
+      }
+      if (s.flash) { const f = 1 - (now - s.flash) / 900; if (f > 0) glow = Math.max(glow, f); else s.flash = 0; }
+      if (glow > 0 && !reduced) { ctx.save(); ctx.shadowColor = colors.wave; ctx.shadowBlur = 16 * glow; strokePath(pts, (t) => taper(t) + 1.2 * glow, colors.wave); ctx.restore(); }
+      ctx.globalAlpha = s.sample ? 0.8 : 1;
+      strokePath(pts, taper, colors.ink);
+      ctx.globalAlpha = 1;
+    }
+    if (drawing && drawing.pts.length > 1) strokePath(drawing.pts, taper, colors.ink);
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- input ----------
+  function pos(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  cv.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    cv.setPointerCapture(e.pointerId);
+    drawing = { pts: [pos(e)], t0: performance.now() };
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (!drawing) return;
+    const p = pos(e), q = drawing.pts[drawing.pts.length - 1];
+    if (Math.hypot(p.x - q.x, p.y - q.y) > 2) drawing.pts.push(p);
+  });
+  const finish = () => {
+    if (!drawing) return;
+    const d = drawing; drawing = null;
+    if (d.pts.length < 3 || pathLength(d.pts) < 12) return;
+    const n = clamp(Math.round(pathLength(d.pts) / 4), 24, 220);
+    const pts = resample(d.pts, n);
+    const s = { id: nextId++, pts, orig: clone(pts), t0: d.t0, t1: performance.now(), recall: 0, rewrites: 0, anim: null, flash: 0, pendingSince: 0 };
+    strokes.push(s);
+    sendEcho(s);
+  };
+  cv.addEventListener("pointerup", finish);
+  cv.addEventListener("pointercancel", finish);
+
+  function setWitness(on) {
+    if (on === witness) return;
+    witness = on;
+    $("witnessBtn").setAttribute("aria-pressed", String(on));
+    if (on) {
+      for (const s of strokes) s.recall++;
+      if (strokes.length) setStatus("witnessing what you drew. Every line you look at will drift further next time.");
+    }
+  }
+  const wb = $("witnessBtn");
+  wb.addEventListener("pointerdown", (e) => { e.preventDefault(); setWitness(true); });
+  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) wb.addEventListener(ev, () => setWitness(false));
+  wb.addEventListener("keydown", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); setWitness(true); } });
+  wb.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") setWitness(false); });
+  addEventListener("keydown", (e) => { if ((e.key === "w" || e.key === "W") && e.target.tagName !== "INPUT") setWitness(true); });
+  addEventListener("keyup", (e) => { if (e.key === "w" || e.key === "W") setWitness(false); });
+  addEventListener("blur", () => setWitness(false));
+
+  $("clearBtn").addEventListener("click", () => { strokes = []; arcs = []; setStatus("Blank sheet. The first stroke has no past to rewrite."); });
+  $("source").addEventListener("change", () => {
+    const moth = $("source").value === "moth";
+    $("proxyUrl").hidden = !moth; store.set("ri.source", $("source").value);
+    if (moth && !$("proxyUrl").value) $("proxyUrl").focus();
+  });
+  $("proxyUrl").addEventListener("change", () => store.set("ri.proxy", $("proxyUrl").value.trim()));
+  $("negMode").addEventListener("change", () => store.set("ri.neg", $("negMode").value));
+
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors);
+  new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  addEventListener("resize", resize);
+
+  // ---------- sample strokes so the sheet opens mid-drawing ----------
+  function seed() {
+    const cx = W / 2, cy = H / 2, u = Math.min(W, H);
+    const make = (fn, n = 90) => { const pts = []; for (let i = 0; i < n; i++) pts.push(fn(i / (n - 1))); return pts; };
+    const shapes = [
+      make((t) => ({ x: cx - u * 0.32 + t * u * 0.64, y: cy - u * 0.12 + Math.sin(t * Math.PI * 2) * u * 0.05 })),
+      make((t) => ({ x: cx - u * 0.18 + Math.cos(t * Math.PI * 1.6) * u * 0.1, y: cy + u * 0.08 + Math.sin(t * Math.PI * 1.6) * u * 0.1 })),
+      make((t) => ({ x: cx + u * 0.16 + t * u * 0.06, y: cy - u * 0.02 + t * u * 0.24 })),
+      make((t) => ({ x: cx + u * 0.02 + Math.cos(t * Math.PI * 3) * u * 0.05 * (1 - t), y: cy - u * 0.26 + t * u * 0.1 })),
+      make((t) => ({ x: cx - u * 0.3 + t * u * 0.22, y: cy + u * 0.24 - Math.pow(t, 2) * u * 0.08 })),
+    ];
+    strokes = shapes.map((pts) => ({ id: nextId++, pts, orig: clone(pts), t0: 0, t1: 600, recall: 0, rewrites: 0, anim: null, flash: 0, pendingSince: 0, sample: true }));
+  }
+
+  readColors(); resize();
+  $("source").value = store.get("ri.source") === "moth" ? "moth" : "sim";
+  $("proxyUrl").value = store.get("ri.proxy") || "";
+  $("proxyUrl").hidden = $("source").value !== "moth";
+  const nm = store.get("ri.neg"); if (nm) $("negMode").value = nm;
+  seed();
+  drawTaps([], "no echo yet");
+  $("echoSrc").textContent = "no echo yet";
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</html>
