@@ -57,7 +57,7 @@ export const DEFAULTS: Params = {
   quality: 64,
   flow: 1.2,
   coupling: 2.2,
-  spawn: 10,
+  spawn: 6,
   life: 9,
   trail: 0.07,
   spread: 0.55,
@@ -104,17 +104,17 @@ export const THREAD_STYLES: ThreadStyle[] = [
   {
     name: "Sprout",
     note: "Short threads that hug the pen: the line thickens into a fur of fringes.",
-    values: { flow: 0.9, coupling: 1, spawn: 12, life: 6, trail: 0.08, spread: 0.3 },
+    values: { flow: 0.9, coupling: 1, spawn: 8, life: 6, trail: 0.08, spread: 0.3 },
   },
   {
     name: "Drift",
     note: "Long, loose threads that ride the waves far out from the strokes.",
-    values: { flow: 1.6, coupling: 0.5, spawn: 7, life: 12, trail: 0.05, spread: 0.9 },
+    values: { flow: 1.6, coupling: 0.5, spawn: 4, life: 12, trail: 0.05, spread: 0.9 },
   },
   {
     name: "Weave",
     note: "Strongly coupled spins: the threads lock into one rhythm and braid into bundles.",
-    values: { flow: 1.2, coupling: 2.2, spawn: 10, life: 9, trail: 0.07, spread: 0.55 },
+    values: { flow: 1.2, coupling: 2.2, spawn: 6, life: 9, trail: 0.07, spread: 0.55 },
   },
 ];
 

@@ -592,7 +592,9 @@ export class Engine {
   private stepThreads() {
     const v = this.view;
     const now = performance.now();
-    const dt = this.lastStep ? (now - this.lastStep) / 1000 : 1 / 60;
+    // 30 steps a second is plenty for the eye and half the work for the machine.
+    if (now - this.lastStep < 1000 / 30 - 2) return;
+    const dt = this.lastStep ? Math.min((now - this.lastStep) / 1000, 0.1) : 1 / 30;
     this.lastStep = now;
     // The picture only makes sense from one viewpoint: a moved camera starts it again.
     const key = `${this.yaw.toFixed(3)}|${this.pitch.toFixed(3)}|${this.dist.toFixed(3)}|${this.trails.width}x${this.trails.height}`;

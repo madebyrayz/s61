@@ -89,7 +89,7 @@
          Built from --card rather than from a separate palette. ---- */
   --panel-bg: hsl(var(--card) / 0.82);
   --panel-stroke: hsl(var(--border) / 0.9);
-  --panel-blur: blur(20px) saturate(140%);
+  --panel-blur: blur(12px) saturate(140%);
 }
 
 [data-theme="light"] {

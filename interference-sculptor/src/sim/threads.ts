@@ -33,7 +33,10 @@ export interface ThreadParams {
   grow: boolean;
 }
 
-const MAX = 7000;
+const MAX = 3000;
+/** Colour bins for batching: every segment of one bin is stroked in one draw call. */
+const BINS = 24;
+const FADES = 3;
 /** Sources a thread listens to: the nearest few to its birthplace. */
 const K = 12;
 const CELL = 0.1;
@@ -58,6 +61,8 @@ export class Threads {
   private sources: Source[] = [];
   private lambda = 0.16;
   private carry = 0;
+  /** Seconds since the pen last moved. */
+  private idle = 0;
 
   setSources(src: Source[], lambda: number) {
     this.sources = src;
@@ -67,6 +72,7 @@ export class Threads {
   }
 
   clear() {
+    this.idle = 0;
     this.count = 0;
     this.next = 0;
     this.cells.clear();
@@ -137,6 +143,7 @@ export class Threads {
     dt = Math.min(dt, 0.05);
     const λ = this.lambda;
     if (pen) {
+      this.idle = 0;
       const d: Vec3 = [pen.to[0] - pen.from[0], pen.to[1] - pen.from[1], pen.to[2] - pen.from[2]];
       this.carry += prm.spawn * dt * 60;
       const n = Math.floor(this.carry);
@@ -146,7 +153,10 @@ export class Threads {
         this.spawn([pen.from[0] + d[0] * t, pen.from[1] + d[1] * t, pen.from[2] + d[2] * t], d, 1, prm.life);
       }
     } else if (prm.grow && strokePoints.length) {
-      this.carry += prm.spawn * dt * 6;
+      // Growth after the pen lifts slows down over time (half-life ~20 s), so an
+      // untouched drawing settles and stops costing the machine anything.
+      this.idle += dt;
+      this.carry += prm.spawn * dt * 6 * Math.pow(0.5, this.idle / 20);
       const n = Math.floor(this.carry);
       this.carry -= n;
       for (let m = 0; m < n; m++) {
@@ -165,9 +175,10 @@ export class Threads {
     const key = (x: number, y: number, z: number) => ((Math.floor(x / CELL) * 73856093) ^ (Math.floor(y / CELL) * 19349663) ^ (Math.floor(z / CELL) * 83492791)) | 0;
     const nextCells = new Map<number, [number, number, number]>();
     const w = this.tmp;
-    ctx.lineCap = "round";
-    ctx.lineWidth = 0.7 * dpr;
     const alpha = prm.trail;
+    // Segments are gathered into BINS × FADES paths and stroked at the end, so a
+    // frame costs a few dozen draw calls instead of one per thread.
+    const paths: (Path2D | null)[] = new Array(BINS * FADES).fill(null);
 
     for (let i = 0; i < this.count; i++) {
       this.age[i] += dt;
@@ -242,14 +253,25 @@ export class Threads {
       const b = project([this.pos[o], this.pos[o + 1], this.pos[o + 2]]);
       if (a.z <= 0.05 || b.z <= 0.05) continue;
       const fade = Math.min(1, this.age[i] * 2) * Math.min(1, (this.life[i] - this.age[i]) * 0.7);
-      const col = palette(θ / (Math.PI * 2) + 0.5);
-      const k = paper ? 0.55 : 1.0;
-      ctx.strokeStyle = `rgba(${(col[0] * 255 * k) | 0},${(col[1] * 255 * k) | 0},${(col[2] * 255 * k) | 0},${alpha * fade})`;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      const bin = Math.min(BINS - 1, Math.floor(((θ / (Math.PI * 2) + 0.5) % 1 + 1) % 1 * BINS));
+      const f = Math.min(FADES - 1, Math.floor(fade * FADES));
+      const slot = bin * FADES + f;
+      const path = paths[slot] ?? (paths[slot] = new Path2D());
+      path.moveTo(a.x, a.y);
+      path.lineTo(b.x, b.y);
     }
     this.cells = nextCells;
+
+    ctx.lineCap = "round";
+    ctx.lineWidth = 0.7 * dpr;
+    const k = paper ? 0.55 : 1.0;
+    for (let slot = 0; slot < paths.length; slot++) {
+      const path = paths[slot];
+      if (!path) continue;
+      const bin = Math.floor(slot / FADES), f = slot % FADES;
+      const col = palette((bin + 0.5) / BINS);
+      ctx.strokeStyle = `rgba(${(col[0] * 255 * k) | 0},${(col[1] * 255 * k) | 0},${(col[2] * 255 * k) | 0},${alpha * ((f + 0.5) / FADES)})`;
+      ctx.stroke(path);
+    }
   }
 }
