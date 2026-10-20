@@ -56,15 +56,17 @@ export const DEFAULTS: Params = {
   whichPath: false,
   spacing: 0.42,
   quality: 96,
-  flow: 1.2,
-  coupling: 2.2,
-  spawn: 6,
-  life: 9,
-  trail: 0.07,
-  spread: 0.55,
+  flow: 2.2,
+  coupling: 1.4,
+  spawn: 5,
+  life: 12,
+  trail: 0.14,
+  spread: 1.6,
   grow: true,
-  wander: 0.35,
-  mark: "dots",
+  wander: 0.02,
+  mark: "line",
+  glide: 0.1,
+  loop: 0.07,
 };
 
 export const prefersReducedMotion = () =>
@@ -100,24 +102,29 @@ export function paletteFn(name: PaletteName) {
 export interface ThreadStyle {
   name: string;
   note: string;
-  values: Pick<ThreadParams, "flow" | "coupling" | "spawn" | "life" | "trail" | "spread" | "wander">;
+  values: Pick<ThreadParams, "flow" | "coupling" | "spawn" | "life" | "trail" | "spread" | "wander" | "glide" | "loop">;
 }
 
 export const THREAD_STYLES: ThreadStyle[] = [
   {
+    name: "Burst",
+    note: "Rays fly straight out from your line along the wave, each spinning in a small loop, and bundle into fans and sheets.",
+    values: { flow: 2.2, coupling: 1.4, spawn: 5, life: 12, trail: 0.14, spread: 1.6, wander: 0.02, glide: 0.1, loop: 0.07 },
+  },
+  {
     name: "Sprout",
     note: "Short threads that hug the pen: the line thickens into a fur of fringes.",
-    values: { flow: 0.9, coupling: 1, spawn: 8, life: 6, trail: 0.08, spread: 0.3, wander: 0.5 },
+    values: { flow: 0.9, coupling: 1, spawn: 8, life: 6, trail: 0.08, spread: 0.3, wander: 0.5, glide: 0.85, loop: 0.1 },
   },
   {
     name: "Drift",
     note: "Long, loose threads that ride the waves far out from the strokes.",
-    values: { flow: 1.6, coupling: 0.5, spawn: 4, life: 12, trail: 0.05, spread: 0.9, wander: 0.7 },
+    values: { flow: 1.6, coupling: 0.5, spawn: 4, life: 12, trail: 0.05, spread: 0.9, wander: 0.7, glide: 0.6, loop: 0.3 },
   },
   {
     name: "Weave",
     note: "Strongly coupled spins: the threads lock into one rhythm and braid into bundles.",
-    values: { flow: 1.2, coupling: 2.2, spawn: 6, life: 9, trail: 0.07, spread: 0.55, wander: 0.35 },
+    values: { flow: 1.2, coupling: 2.2, spawn: 6, life: 9, trail: 0.07, spread: 0.55, wander: 0.35, glide: 0.85, loop: 0.15 },
   },
 ];
 

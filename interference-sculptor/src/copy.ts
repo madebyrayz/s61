@@ -200,6 +200,16 @@ export const CONTROLS = {
     see: "Low is tidy and systematic; high is loose and hand-made.",
     hint: "0.3 to 0.5.",
   },
+  glide: {
+    label: "Glide",
+    what: "Where a thread goes: at zero it flies straight out from the strokes along the wave, in rays; at one it glides around the wavefront shells and circles the sources.",
+    see: "Low gives fans and sheets of long strands; high gives fur that hugs the line.",
+  },
+  loop: {
+    label: "Loop",
+    what: "The small circle each thread traces as it spins, in wavelengths: the pen of the thread is its position plus this orbit.",
+    see: "Zero draws clean rays; higher draws the little loops along every strand.",
+  },
   mark: {
     label: "Mark",
     what: "What a thread leaves behind each step: a dot where it is, a dash every third step, or its whole path as a line.",

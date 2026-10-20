@@ -35,6 +35,10 @@ export interface ThreadParams {
   wander: number;
   /** What a thread leaves behind each step. */
   mark: Mark;
+  /** 0: fly straight out along the wave (rays from the strokes); 1: glide around the wavefront shells. */
+  glide: number;
+  /** Radius of the small circle each thread traces as it spins, in wavelengths. The loops in the strands. */
+  loop: number;
 }
 
 export type Mark = "dots" | "dashes" | "line";
@@ -52,11 +56,11 @@ const CELL = 0.1;
 type Pt = { x: number; y: number; z: number };
 
 /** One step's mark into its colour path: a dot at the end, a dash on every third step, or the segment. */
-function addMark(paths: (Path2D | null)[], slot: number, a: Pt, b: Pt, mark: Mark, n: number, dpr: number) {
+function addMark(paths: (Path2D | null)[], slot: number, a: Pt, b: Pt, mark: Mark, n: number, size: number) {
   if (mark === "dashes" && n % 3 !== 0) return;
   const path = paths[slot] ?? (paths[slot] = new Path2D());
   if (mark === "dots") {
-    const r = 0.55 * dpr;
+    const r = 0.8 * size;
     path.rect(b.x - r, b.y - r, r * 2, r * 2);
     return;
   }
@@ -72,6 +76,8 @@ export class Threads {
   count = 0;
   private pos = new Float32Array(MAX * 3);
   private prev = new Float32Array(MAX * 3);
+  /** Where the pen of this thread was last frame: its position plus the spin loop. */
+  private pen = new Float32Array(MAX * 3);
   private home = new Float32Array(MAX * 3);
   private head = new Float32Array(MAX * 3);
   private theta = new Float32Array(MAX);
@@ -79,6 +85,8 @@ export class Threads {
   private age = new Float32Array(MAX);
   /** Each thread's own pace, 0.6–1.4, so a bundle is not a lock-step march. */
   private pace = new Float32Array(MAX);
+  /** The thread's colour, 0–1 through the palette, fixed at birth: one hue per region of the drawing, like one colour per qubit. */
+  private hue = new Float32Array(MAX);
   private life = new Float32Array(MAX);
   private near = new Int16Array(MAX * K);
   private next = 0;
@@ -117,24 +125,40 @@ export class Threads {
     for (let k = 0; k < K; k++) this.near[i * K + k] = k < idx.length ? idx[k][1] : -1;
   }
 
-  /** Birth n threads at p, heading roughly along dir, in step with the wave there. */
-  spawn(p: Vec3, dir: Vec3 | null, n: number, life: number) {
+  /**
+   * Birth n threads at p as one fan: headings spread ±fan radians about dir,
+   * all in one plane, so the bundle flies out as a sheet.
+   */
+  spawn(p: Vec3, dir: Vec3 | null, n: number, life: number, fan = 0.6) {
+    const d: Vec3 = dir ?? [Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5];
+    const L = Math.hypot(d[0], d[1], d[2]) || 1;
+    const dx = d[0] / L, dy = d[1] / L, dz = d[2] / L;
+    // A direction across d, random: the plane of the fan.
+    const rx = Math.random() - 0.5, ry = Math.random() - 0.5, rz = Math.random() - 0.5;
+    const rd = rx * dx + ry * dy + rz * dz;
+    let ux = rx - dx * rd, uy = ry - dy * rd, uz = rz - dz * rd;
+    const ul = Math.hypot(ux, uy, uz) || 1;
+    ux /= ul; uy /= ul; uz /= ul;
     for (let m = 0; m < n; m++) {
       const i = this.count < MAX ? this.count++ : this.next++ % MAX;
-      const j = (Math.random() - 0.5) * 0.03, k = (Math.random() - 0.5) * 0.03, l = (Math.random() - 0.5) * 0.03;
+      const j = (Math.random() - 0.5) * 0.02, k = (Math.random() - 0.5) * 0.02, l = (Math.random() - 0.5) * 0.02;
       const x = p[0] + j, y = p[1] + k, z = p[2] + l;
       this.pos.set([x, y, z], i * 3);
       this.prev.set([x, y, z], i * 3);
+      this.pen.set([x, y, z], i * 3);
       this.home.set([p[0], p[1], p[2]], i * 3);
-      const d: Vec3 = dir ?? [Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5];
-      const L = Math.hypot(d[0], d[1], d[2]) || 1;
-      this.head.set([d[0] / L, d[1] / L, d[2] / L], i * 3);
+      const φ = n > 1 ? (m / (n - 1) - 0.5) * 2 * fan : 0;
+      const c = Math.cos(φ), sn = Math.sin(φ);
+      this.head.set([dx * c + ux * sn, dy * c + uy * sn, dz * c + uz * sn], i * 3);
       this.theta[i] = Math.random() * Math.PI * 2;
       this.omega[i] = (Math.random() - 0.5) * 0.8;
       this.pace[i] = 0.6 + Math.random() * 0.8;
       this.age[i] = 0;
       this.life[i] = life * (0.6 + Math.random() * 0.8);
       this.pickNear(i);
+      // Colour from the nearest pinhole: threads born in one place share a hue, so a bundle reads as one sheet.
+      const q = Math.max(0, this.near[i * K]);
+      this.hue[i] = (Math.floor(q / 5) * 0.23 + Math.floor(q / 5) * 0.11 * 0.37) % 1;
     }
   }
 
@@ -172,6 +196,7 @@ export class Threads {
     palette: (t: number) => [number, number, number],
     paper: boolean,
     dpr: number,
+    zoom = 1,
   ) {
     dt = Math.min(dt, 0.05);
     const λ = this.lambda;
@@ -179,26 +204,22 @@ export class Threads {
       this.idle = 0;
       const d: Vec3 = [pen.to[0] - pen.from[0], pen.to[1] - pen.from[1], pen.to[2] - pen.from[2]];
       this.carry += prm.spawn * dt * 60;
-      const n = Math.floor(this.carry);
-      this.carry -= n;
-      for (let m = 0; m < n; m++) {
+      // Born in fans of 6 along the pen path, heading the way the pen moves.
+      while (this.carry >= 6) {
+        this.carry -= 6;
         const t = Math.random();
-        this.spawn([pen.from[0] + d[0] * t, pen.from[1] + d[1] * t, pen.from[2] + d[2] * t], d, 1, prm.life);
+        this.spawn([pen.from[0] + d[0] * t, pen.from[1] + d[1] * t, pen.from[2] + d[2] * t], d, 6, prm.life, 0.5);
       }
     } else if (prm.grow && strokePoints.length) {
       // Growth after the pen lifts slows down over time (half-life ~20 s), so an
       // untouched drawing settles and stops costing the machine anything.
       this.idle += dt;
       this.carry += prm.spawn * dt * 6 * Math.pow(0.5, this.idle / 20);
-      const n = Math.floor(this.carry);
-      this.carry -= n;
-      for (let m = 0; m < n; m++) {
-        // Born along the strokes, heading along the stroke, like the pen did.
+      // Bursts: a whole fan from one point of a stroke at a time, so the growth composes itself in sheets.
+      while (this.carry >= 10) {
+        this.carry -= 10;
         const j = Math.floor(Math.random() * strokePoints.length);
-        const a = strokePoints[Math.max(0, j - 1)], b = strokePoints[Math.min(strokePoints.length - 1, j + 1)];
-        const d: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        const L = Math.hypot(d[0], d[1], d[2]);
-        this.spawn(strokePoints[j], L > 1e-6 && L < 0.2 ? d : null, 1, prm.life);
+        this.spawn(strokePoints[j], null, 10, prm.life, 0.9);
       }
     }
     if (!this.count) return;
@@ -219,8 +240,8 @@ export class Threads {
         // Recycle: move the last live thread into this slot.
         const last = --this.count;
         if (last !== i) {
-          for (const a of [this.pos, this.prev, this.home, this.head]) a.copyWithin(i * 3, last * 3, last * 3 + 3);
-          this.theta[i] = this.theta[last]; this.omega[i] = this.omega[last]; this.age[i] = this.age[last]; this.life[i] = this.life[last]; this.pace[i] = this.pace[last];
+          for (const a of [this.pos, this.prev, this.pen, this.home, this.head]) a.copyWithin(i * 3, last * 3, last * 3 + 3);
+          this.theta[i] = this.theta[last]; this.omega[i] = this.omega[last]; this.age[i] = this.age[last]; this.life[i] = this.life[last]; this.pace[i] = this.pace[last]; this.hue[i] = this.hue[last];
           this.near.copyWithin(i * K, last * K, last * K + K);
           i--;
         }
@@ -254,9 +275,14 @@ export class Threads {
       const ax = gx / g, ay = gy / g, az = gz / g;
       let hx = this.head[o], hy = this.head[o + 1], hz = this.head[o + 2];
       const along = hx * ax + hy * ay + hz * az;
-      hx -= ax * along * 0.85; hy -= ay * along * 0.85; hz -= az * along * 0.85;
-      // Rodrigues rotation of h about a by angle dθ·dt·1.5.
-      const ang = dθ * dt * 1.5, cs = Math.cos(ang), sn = Math.sin(ang);
+      // glide 1: keep only the part across the wave (circle the sources).
+      // glide 0: lean into the wave direction (fly out from the strokes in straight rays).
+      const gl = prm.glide;
+      hx -= ax * along * gl; hy -= ay * along * gl; hz -= az * along * gl;
+      const lean = (1 - gl) * 0.03;
+      hx += ax * lean; hy += ay * lean; hz += az * lean;
+      // Rodrigues rotation of h about a by the spin, only as much as the thread glides (rays stay straight).
+      const ang = dθ * dt * 1.5 * gl, cs = Math.cos(ang), sn = Math.sin(ang);
       const adh = ax * hx + ay * hy + az * hz;
       const cx = ay * hz - az * hy, cy = az * hx - ax * hz, cz = ax * hy - ay * hx;
       hx = hx * cs + cx * sn + ax * adh * (1 - cs);
@@ -266,8 +292,13 @@ export class Threads {
       const bx = this.home[o] - x, by = this.home[o + 1] - y, bz = this.home[o + 2] - z;
       const bd = Math.hypot(bx, by, bz);
       if (bd > prm.spread) {
-        const pull = (bd - prm.spread) / prm.spread;
-        hx += (bx / bd) * pull; hy += (by / bd) * pull; hz += (bz / bd) * pull;
+        if (gl < 0.5) {
+          // A ray that has flown its distance ends; turning back would curl the sheet.
+          this.age[i] = this.life[i];
+        } else {
+          const pull = (bd - prm.spread) / prm.spread;
+          hx += (bx / bd) * pull; hy += (by / bd) * pull; hz += (bz / bd) * pull;
+        }
       }
       // Chance: a nudge in a random direction each step, as much as `wander` allows.
       if (prm.wander > 0) {
@@ -286,29 +317,49 @@ export class Threads {
       this.pos[o + 1] = y + hy * speed * dt;
       this.pos[o + 2] = z + hz * speed * dt;
 
-      // Draw.
-      const a = project([this.prev[o], this.prev[o + 1], this.prev[o + 2]]);
-      const b = project([this.pos[o], this.pos[o + 1], this.pos[o + 2]]);
+      // The pen of the thread: its position plus a small circle traced by the spin,
+      // in the plane across the heading. That circle is the loop in each strand.
+      const px0 = this.pen[o], py0 = this.pen[o + 1], pz0 = this.pen[o + 2];
+      let px = this.pos[o], py = this.pos[o + 1], pz = this.pos[o + 2];
+      if (prm.loop > 0) {
+        // Two directions across h.
+        const upx = Math.abs(hy) < 0.9 ? 0 : 1, upy = Math.abs(hy) < 0.9 ? 1 : 0;
+        let n1x = upy * hz, n1y = upx * hz * -1, n1z = upx * hy - upy * hx;
+        const n1l = Math.hypot(n1x, n1y, n1z) || 1;
+        n1x /= n1l; n1y /= n1l; n1z /= n1l;
+        const n2x = hy * n1z - hz * n1y, n2y = hz * n1x - hx * n1z, n2z = hx * n1y - hy * n1x;
+        const r = prm.loop * λ, cθ = Math.cos(θ * 7) * r, sθ = Math.sin(θ * 7) * r;
+        px += n1x * cθ + n2x * sθ; py += n1y * cθ + n2y * sθ; pz += n1z * cθ + n2z * sθ;
+      }
+      this.pen[o] = px; this.pen[o + 1] = py; this.pen[o + 2] = pz;
+      if (this.age[i] < dt * 1.5) continue; // first frame: no segment yet
+      const a = project([px0, py0, pz0]);
+      const b = project([px, py, pz]);
       if (a.z <= 0.05 || b.z <= 0.05) continue;
       const fade = Math.min(1, this.age[i] * 2) * Math.min(1, (this.life[i] - this.age[i]) * 0.7);
-      const bin = Math.min(BINS - 1, Math.floor(((θ / (Math.PI * 2) + 0.5) % 1 + 1) % 1 * BINS));
+      const bin = Math.min(BINS - 1, Math.floor(((this.hue[i] % 1) + 1) % 1 * BINS));
       const f = Math.min(FADES - 1, Math.floor(fade * FADES));
       const slot = bin * FADES + f;
       const h = this.segHead;
-      addMark(paths, slot, a, b, prm.mark, h, dpr);
+      addMark(paths, slot, a, b, prm.mark, h, Threads.markSize(dpr, zoom));
       // Remember it in 3D.
-      this.segs.set([this.prev[o], this.prev[o + 1], this.prev[o + 2], this.pos[o], this.pos[o + 1], this.pos[o + 2]], h * 6);
+      this.segs.set([px0, py0, pz0, px, py, pz], h * 6);
       this.segSlot[h] = slot;
       this.segHead = (h + 1) % MAX_SEG;
       if (this.segN < MAX_SEG) this.segN++;
     }
     this.cells = nextCells;
-    this.strokePaths(ctx, paths, alpha, palette, paper, dpr, prm.mark);
+    this.strokePaths(ctx, paths, alpha, palette, paper, dpr, prm.mark, zoom);
   }
 
-  private strokePaths(ctx: CanvasRenderingContext2D, paths: (Path2D | null)[], alpha: number, palette: (t: number) => [number, number, number], paper: boolean, dpr: number, mark: Mark) {
+  /** Marks grow with the zoom, so a strand stays a strand when you come close. */
+  static markSize(dpr: number, zoom: number) {
+    return dpr * Math.min(4, Math.max(0.6, 0.7 * Math.sqrt(zoom)));
+  }
+
+  private strokePaths(ctx: CanvasRenderingContext2D, paths: (Path2D | null)[], alpha: number, palette: (t: number) => [number, number, number], paper: boolean, dpr: number, mark: Mark, zoom: number) {
     ctx.lineCap = "round";
-    ctx.lineWidth = 0.7 * dpr;
+    ctx.lineWidth = Threads.markSize(dpr, zoom);
     const k = paper ? 0.55 : 1.0;
     // Dots are small, so they carry more ink each than a line would.
     const a = mark === "dots" ? Math.min(1, alpha * 2.2) : alpha;
@@ -342,6 +393,7 @@ export class Threads {
     dpr: number,
     mark: Mark,
     stride = 1,
+    zoom = 1,
   ) {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     if (!this.segN) return;
@@ -353,9 +405,9 @@ export class Threads {
       const a = project([segs[o], segs[o + 1], segs[o + 2]]);
       const b = project([segs[o + 3], segs[o + 4], segs[o + 5]]);
       if (a.z <= 0.05 || b.z <= 0.05) continue;
-      addMark(paths, this.segSlot[i], a, b, mark, i, dpr);
+      addMark(paths, this.segSlot[i], a, b, mark, i, Threads.markSize(dpr, zoom));
     }
     // Thinned replays get proportionally heavier ink, so the picture keeps its weight.
-    this.strokePaths(ctx, paths, Math.min(1, alpha * Math.sqrt(stride)), palette, paper, dpr, mark);
+    this.strokePaths(ctx, paths, Math.min(1, alpha * Math.sqrt(stride)), palette, paper, dpr, mark, zoom);
   }
 }

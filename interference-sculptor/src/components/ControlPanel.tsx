@@ -150,7 +150,7 @@ export function CanvasControls({
   onClean,
 }: Props) {
   const slider = (
-    key: "lambda" | "spacing" | "depth" | "threshold" | "reach" | "density" | "exposure" | "flow" | "coupling" | "spawn" | "life" | "trail" | "spread" | "wander",
+    key: "lambda" | "spacing" | "depth" | "threshold" | "reach" | "density" | "exposure" | "flow" | "coupling" | "spawn" | "life" | "trail" | "spread" | "wander" | "glide" | "loop",
     min: number,
     max: number,
     ends?: [string, string],
@@ -277,7 +277,9 @@ export function CanvasControls({
             {slider("spawn", 1, 30, ["sparse", "dense"], (v) => `${Math.round(v)}`)}
             {slider("life", 2, 20, ["brief", "long"], (v) => `${v.toFixed(1)} s`)}
             {slider("trail", 0.02, 0.3, ["wash", "wire"], (v) => v.toFixed(2))}
-            {slider("spread", 0.1, 1.5, ["close", "far"], (v) => v.toFixed(2))}
+            {slider("spread", 0.1, 3, ["close", "far"], (v) => v.toFixed(2))}
+            {slider("glide", 0, 1, ["rays", "orbits"], (v) => v.toFixed(2))}
+            {slider("loop", 0, 0.6, ["none", "curls"], (v) => `${v.toFixed(2)} λ`)}
             {slider("wander", 0, 1, ["exact", "chance"], (v) => v.toFixed(2))}
             <ButtonRow<Mark> id="mark" copy={CONTROLS.mark} value={p.mark} options={MARK_OPTIONS} onChange={(v) => update("mark", v)} />
           </Flyout>

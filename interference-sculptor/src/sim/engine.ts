@@ -437,6 +437,11 @@ export class Engine {
     return { eye, fwd, right, up };
   }
 
+  /** How much closer than the default view we are: 1 at the start, 2 when twice as close. */
+  private zoom() {
+    return 5.6 / this.dist;
+  }
+
   /** Slide the view sideways and up, in fractions of the visible height (WASD, or shift + right-drag). */
   pan(dx: number, dy: number) {
     const { right, up } = this.basis();
@@ -651,12 +656,12 @@ export class Engine {
     // while the hand is still moving, in full once it stops) instead of wiping it.
     if (this.replayNeeded || (this.replayThin && !this.coarse())) {
       const thin = this.coarse() && this.replayNeeded;
-      this.threads.replay(this.trailCtx, (p) => this.project(p, b), v.trail, paletteFn(v.palette), paper, dpr, v.mark, thin ? 4 : 1);
+      this.threads.replay(this.trailCtx, (p) => this.project(p, b), v.trail, paletteFn(v.palette), paper, dpr, v.mark, thin ? 4 : 1, this.zoom());
       this.replayThin = thin;
       this.replayNeeded = false;
     }
     if (!pen && !this.threads.count && !(v.grow && this.strokePoints.length)) return;
-    this.threads.step(dt, v, pen, this.strokePoints, this.trailCtx, (p) => this.project(p, b), paletteFn(v.palette), paper, dpr);
+    this.threads.step(dt, v, pen, this.strokePoints, this.trailCtx, (p) => this.project(p, b), paletteFn(v.palette), paper, dpr, this.zoom());
     if (++this.threadTick % 30 === 0) this.events.onThreads(this.threads.count);
   }
 
@@ -669,7 +674,9 @@ export class Engine {
     // Rendered at 1× regardless of the display (the raymarch costs a full shader per pixel),
     // and at half size while the view is moving. The overlay stays sharp.
     const r = this.canvas.getBoundingClientRect();
-    const s = this.coarse() ? 0.5 : 1;
+    // Threads mode only clears the WebGL canvas, so it never needs the half-size trick
+    // (and reallocating the drawing buffer is itself a cost).
+    const s = this.coarse() && this.view?.render !== "threads" ? 0.5 : 1;
     const w = Math.max(1, Math.round(r.width * s)), h = Math.max(1, Math.round(r.height * s));
     const ow = Math.max(1, Math.round(r.width)), oh = Math.max(1, Math.round(r.height));
     if (this.canvas.width !== w || this.canvas.height !== h) {
