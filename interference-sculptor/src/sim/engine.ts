@@ -113,6 +113,10 @@ export class Engine {
   private strokePoints: Vec3[] = [];
   private camKey = "";
   private threadTick = 0;
+  /** The trails canvas must be redrawn from the 3D record: the view, ground or palette changed. */
+  private replayNeeded = false;
+  /** The last replay was thinned (the view was moving); a full one is owed once it stops. */
+  private replayThin = false;
 
   /* recording */
   private rec: { recorder: MediaRecorder; out: HTMLCanvasElement; ctx: CanvasRenderingContext2D; chunks: Blob[]; mime: string } | null = null;
@@ -184,19 +188,21 @@ export class Engine {
     const changedGround = this.view && (this.view.background !== v.background || this.view.palette !== v.palette);
     this.view = v;
     this.dirty = true;
-    if (changedGround) this.clearTrails();
+    if (changedGround) this.replayNeeded = true;
     // Entering a field mode for the first time since the strokes changed: bake now.
     if (v.render !== "threads" && !wasField && !this.baked) this.startBake(this.sources, this.spec.quality, false);
   }
 
   setField(spec: FieldSpec) {
-    const fewer = spec.strokes.length < this.spec.strokes.length || (spec.strokes.length && this.spec.strokes[0] !== spec.strokes[0]);
+    // Fewer strokes, or a different first stroke (a preset), is a new drawing; one more stroke is not.
+    const fewer = spec.strokes.length < this.spec.strokes.length || (this.spec.strokes.length > 0 && this.spec.strokes[0] !== spec.strokes[0]);
     this.spec = spec;
     this.sources = strokeSources(spec.strokes, spec.whichPath, spec.spacing);
     this.strokePoints = spec.strokes.flatMap((s) => s.points);
     this.lambda = spec.strokes.length ? Math.min(...spec.strokes.map((s) => s.lambda)) : 0.16;
     this.threads.setSources(this.sources, this.lambda);
     if (fewer) this.clearTrails(true);
+    else this.replayNeeded = true;
     this.baked = false;
     if (this.view?.render !== "threads") this.startBake(this.sources, spec.quality, false);
     else if (!this.sources.length) this.startBake([], spec.quality, false);
@@ -600,7 +606,7 @@ export class Engine {
     const key = `${this.yaw.toFixed(3)}|${this.pitch.toFixed(3)}|${this.dist.toFixed(3)}|${this.trails.width}x${this.trails.height}`;
     if (key !== this.camKey) {
       this.camKey = key;
-      this.clearTrails();
+      this.replayNeeded = true;
     }
     let pen: { from: Vec3; to: Vec3 } | null = null;
     const d = this.drawing;
@@ -612,10 +618,18 @@ export class Engine {
       }
       this.penPrev = tip;
     }
-    if (!pen && !this.threads.count && !(v.grow && this.strokePoints.length)) return;
     const b = this.basis();
     const paper = v.background === "paper";
     const dpr = this.overlay.width / Math.max(1, this.overlay.getBoundingClientRect().width);
+    // The picture is kept in 3D: a moved view redraws it from the new angle (thinned
+    // while the hand is still moving, in full once it stops) instead of wiping it.
+    if (this.replayNeeded || (this.replayThin && !this.coarse())) {
+      const thin = this.coarse() && this.replayNeeded;
+      this.threads.replay(this.trailCtx, (p) => this.project(p, b), v.trail, paletteFn(v.palette), paper, dpr, thin ? 4 : 1);
+      this.replayThin = thin;
+      this.replayNeeded = false;
+    }
+    if (!pen && !this.threads.count && !(v.grow && this.strokePoints.length)) return;
     this.threads.step(dt, v, pen, this.strokePoints, this.trailCtx, (p) => this.project(p, b), paletteFn(v.palette), paper, dpr);
     if (++this.threadTick % 30 === 0) this.events.onThreads(this.threads.count);
   }
@@ -731,7 +745,9 @@ export class Engine {
     }
 
     // The drawing plane, while the pen is over it.
-    if (v.tool === "draw" && (this.hover || this.drawing)) {
+    // In Threads mode the brush is the picture: no plane, no pen line, just the dot.
+    const threads = v.render === "threads";
+    if (v.tool === "draw" && (this.hover || this.drawing) && !threads) {
       const d = v.depth, k = 0.9;
       const ctr: Vec3 = [b.fwd[0] * d, b.fwd[1] * d, b.fwd[2] * d];
       const corner = (sx: number, sy: number): Vec3 => [
@@ -757,8 +773,15 @@ export class Engine {
       }
     }
 
+    if (threads && this.hover && !this.drawing && v.tool === "draw") {
+      const h = this.project(this.hover, b);
+      c.fillStyle = `rgba(${ink},0.5)`;
+      c.beginPath();
+      c.arc(h.x, h.y, 2 * dpr, 0, Math.PI * 2);
+      c.fill();
+    }
     const strokes = this.drawing ? [...this.spec.strokes, { points: this.drawing.pts, lambda: 0 }] : this.spec.strokes;
-    if (v.showStrokes || this.drawing) {
+    if (v.showStrokes || (this.drawing && !threads)) {
       c.lineCap = "round";
       c.lineJoin = "round";
       for (const s of strokes) {

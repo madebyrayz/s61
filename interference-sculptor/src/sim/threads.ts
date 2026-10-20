@@ -37,6 +37,8 @@ const MAX = 3000;
 /** Colour bins for batching: every segment of one bin is stroked in one draw call. */
 const BINS = 24;
 const FADES = 3;
+/** Segments remembered in 3D, so the picture can be redrawn from a new viewpoint. */
+const MAX_SEG = 400_000;
 /** Sources a thread listens to: the nearest few to its birthplace. */
 const K = 12;
 const CELL = 0.1;
@@ -61,6 +63,11 @@ export class Threads {
   private sources: Source[] = [];
   private lambda = 0.16;
   private carry = 0;
+  /* The drawing so far, as 3D segments in a ring: 6 floats and a colour slot each. */
+  private segs = new Float32Array(MAX_SEG * 6);
+  private segSlot = new Uint8Array(MAX_SEG);
+  private segN = 0;
+  private segHead = 0;
   /** Seconds since the pen last moved. */
   private idle = 0;
 
@@ -73,6 +80,8 @@ export class Threads {
 
   clear() {
     this.idle = 0;
+    this.segN = 0;
+    this.segHead = 0;
     this.count = 0;
     this.next = 0;
     this.cells.clear();
@@ -259,9 +268,18 @@ export class Threads {
       const path = paths[slot] ?? (paths[slot] = new Path2D());
       path.moveTo(a.x, a.y);
       path.lineTo(b.x, b.y);
+      // Remember it in 3D.
+      const h = this.segHead;
+      this.segs.set([this.prev[o], this.prev[o + 1], this.prev[o + 2], this.pos[o], this.pos[o + 1], this.pos[o + 2]], h * 6);
+      this.segSlot[h] = slot;
+      this.segHead = (h + 1) % MAX_SEG;
+      if (this.segN < MAX_SEG) this.segN++;
     }
     this.cells = nextCells;
+    this.strokePaths(ctx, paths, alpha, palette, paper, dpr);
+  }
 
+  private strokePaths(ctx: CanvasRenderingContext2D, paths: (Path2D | null)[], alpha: number, palette: (t: number) => [number, number, number], paper: boolean, dpr: number) {
     ctx.lineCap = "round";
     ctx.lineWidth = 0.7 * dpr;
     const k = paper ? 0.55 : 1.0;
@@ -273,5 +291,38 @@ export class Threads {
       ctx.strokeStyle = `rgba(${(col[0] * 255 * k) | 0},${(col[1] * 255 * k) | 0},${(col[2] * 255 * k) | 0},${alpha * ((f + 0.5) / FADES)})`;
       ctx.stroke(path);
     }
+  }
+
+  /**
+   * Redraw everything remembered from the current viewpoint, onto a cleared
+   * canvas. `stride` > 1 draws every n-th segment, for a quick picture while
+   * the view is still moving.
+   */
+  replay(
+    ctx: CanvasRenderingContext2D,
+    project: Projector,
+    alpha: number,
+    palette: (t: number) => [number, number, number],
+    paper: boolean,
+    dpr: number,
+    stride = 1,
+  ) {
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    if (!this.segN) return;
+    const paths: (Path2D | null)[] = new Array(BINS * FADES).fill(null);
+    const segs = this.segs;
+    const start = this.segN < MAX_SEG ? 0 : this.segHead;
+    for (let m = 0; m < this.segN; m += stride) {
+      const i = (start + m) % MAX_SEG, o = i * 6;
+      const a = project([segs[o], segs[o + 1], segs[o + 2]]);
+      const b = project([segs[o + 3], segs[o + 4], segs[o + 5]]);
+      if (a.z <= 0.05 || b.z <= 0.05) continue;
+      const slot = this.segSlot[i];
+      const path = paths[slot] ?? (paths[slot] = new Path2D());
+      path.moveTo(a.x, a.y);
+      path.lineTo(b.x, b.y);
+    }
+    // Thinned replays get proportionally heavier ink, so the picture keeps its weight.
+    this.strokePaths(ctx, paths, Math.min(1, alpha * Math.sqrt(stride)), palette, paper, dpr);
   }
 }
