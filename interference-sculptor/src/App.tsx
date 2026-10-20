@@ -3,14 +3,14 @@ import { CanvasControls } from "@/components/ControlPanel";
 import { Engine } from "@/sim/engine";
 import type { Stroke } from "@/sim/field";
 import { cn } from "@/lib/utils";
-import { DEFAULTS, MAX_GENERATIONS, PRESETS, prefersReducedMotion, type Params, type ViewParams } from "@/params";
+import { DEFAULTS, MAX_GENERATIONS, PRESETS, type Params, type ViewParams } from "@/params";
 
 /** Pause between generations while play is running. */
 const STEP_MS = 900;
 
 /** ?still turns auto-rotate off at load, for recording or screenshots. */
 const still = () => new URLSearchParams(window.location.search).has("still");
-const start = (): Params => ({ ...DEFAULTS, ...PRESETS[0].values, autoRotate: !prefersReducedMotion() && !still() });
+const start = (): Params => ({ ...DEFAULTS, ...PRESETS[0].values, autoRotate: false });
 
 export default function App() {
   const canvas = useRef<HTMLCanvasElement>(null);

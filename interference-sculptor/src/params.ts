@@ -33,7 +33,7 @@ export interface Params extends ViewParams {
 }
 
 export const MAX_GENERATIONS = 3;
-export const QUALITIES = [112, 144, 176];
+export const QUALITIES = [80, 112, 144];
 
 export const DEFAULTS: Params = {
   tool: "draw",
@@ -50,11 +50,11 @@ export const DEFAULTS: Params = {
   reach: 0.08,
   showStrokes: true,
   showGrid: true,
-  autoRotate: true,
+  autoRotate: false,
   whichPath: false,
   spacing: 0.42,
   generations: 0,
-  quality: 144,
+  quality: 112,
 };
 
 export const prefersReducedMotion = () =>

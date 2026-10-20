@@ -14,9 +14,9 @@ import {
 import { PALETTES, type ViewParams } from "@/params";
 
 /** Grid size while a stroke is still being drawn: coarse, so it keeps up with the hand. */
-const LIVE_N = 64;
+const LIVE_N = 48;
 /** Bake work allowed per frame, in (voxels × sources). */
-const BUDGET = 3.5e7;
+const BUDGET = 2e7;
 
 export interface FieldSpec {
   strokes: Stroke[];
@@ -435,7 +435,8 @@ export class Engine {
   };
 
   private resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    // Rendered at 1× regardless of the display: the raymarch costs a full shader per pixel.
+    const dpr = 1;
     const r = this.canvas.getBoundingClientRect();
     const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
     if (this.canvas.width !== w || this.canvas.height !== h) {
