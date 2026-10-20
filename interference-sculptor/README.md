@@ -9,7 +9,8 @@ Live: https://madebyrayz.github.io/s61/interference-sculptor/
 
 Young's double slit, in 3D. Each stroke you draw is cut into a row of pinholes. Each
 pinhole sends out a spherical wave, ψ = a·e^{i(kr+φ)}/r. The GPU adds up every wave at
-every point of a cube (a 3D texture, 80³ to 144³ voxels) and stores:
+every point of space (a 3D texture, 112³ to 176³ voxels, stretched so it reaches out
+in every direction: fine near the strokes, coarser far away) and stores:
 
 | channel | meaning |
 | --- | --- |

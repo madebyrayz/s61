@@ -51,7 +51,7 @@ function Explain({ copy }: { copy: Explainer }) {
           <HelpCircle className="size-3.5" />
         </button>
       </TooltipTrigger>
-      <TooltipContent variant="rich" side="left" align="start">
+      <TooltipContent variant="rich" side="top" align="start">
         <div className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-sm font-semibold tracking-snug">{copy.label}</span>
@@ -230,14 +230,17 @@ export function PresetRow({
   notes,
   active,
   onPick,
+  nowrap = false,
 }: {
   names: string[];
   notes: string[];
   active: number | null;
   onPick: (i: number) => void;
+  /** One line, for a toolbar. */
+  nowrap?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className={cn("flex gap-1.5", nowrap ? "flex-nowrap whitespace-nowrap" : "flex-wrap")}>
       {names.map((name, i) => (
         <Tooltip key={name}>
           <TooltipTrigger asChild>

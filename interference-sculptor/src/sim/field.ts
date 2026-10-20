@@ -16,7 +16,7 @@ export type Vec3 = [number, number, number];
 
 export interface Stroke {
   points: Vec3[];
-  /** Wavelength in world units (the cube is 2 across). */
+  /** Wavelength in world units (a floor-grid square is 0.5). */
   lambda: number;
 }
 

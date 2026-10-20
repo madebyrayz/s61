@@ -14,7 +14,7 @@ import {
 import { PALETTES, type ViewParams } from "@/params";
 
 /** Grid size while a stroke is still being drawn: coarse, so it keeps up with the hand. */
-const LIVE_N = 48;
+const LIVE_N = 64;
 /** Bake work allowed per frame, in (voxels × sources). */
 const BUDGET = 3.5e7;
 
@@ -78,7 +78,8 @@ const norm = (a: Vec3): Vec3 => {
   const l = Math.hypot(a[0], a[1], a[2]) || 1;
   return [a[0] / l, a[1] / l, a[2] / l];
 };
-const clampBox = (v: number) => Math.max(-0.96, Math.min(0.96, v));
+/** How far from the centre a stroke may land. The field has no edge, but the grid is finest near the middle. */
+const clampReach = (v: number) => Math.max(-2.5, Math.min(2.5, v));
 
 /**
  * Owns the WebGL2 context, the camera and the pen. React tells it what to show
@@ -104,13 +105,15 @@ export class Engine {
   /* camera */
   yaw = 0.75;
   pitch = 0.32;
-  dist = 4.9;
+  dist = 5.6;
   private fov = (38 * Math.PI) / 180;
 
   /* state from React */
   private view!: ViewParams;
   private spec: FieldSpec = { strokes: [], whichPath: false, spacing: 0.42, generations: 0, quality: 128 };
   private sources: Source[] = [];
+  /** Shortest wavelength in the drawing; the renderer fades out detail the grid cannot hold. */
+  private lambda = 0.16;
 
   /* pen */
   private drawing: { pts: Vec3[]; speed: number; last: number; samples: number } | null = null;
@@ -169,6 +172,7 @@ export class Engine {
     for (let g = 1; g <= spec.generations; g++) counts.push(all.filter((s) => s.gen <= g).length);
     this.events.onCounts(counts);
     this.sources = all;
+    this.lambda = spec.strokes.length ? Math.min(...spec.strokes.map((s) => s.lambda)) : 0.16;
     this.startBake(all, spec.quality, false);
   }
 
@@ -301,7 +305,7 @@ export class Engine {
     const d = this.view?.depth ?? 0;
     const p0: Vec3 = [fwd[0] * d, fwd[1] * d, fwd[2] * d];
     const s = dot(sub(p0, eye), fwd) / dot(rd, fwd);
-    return [clampBox(eye[0] + rd[0] * s), clampBox(eye[1] + rd[1] * s), clampBox(eye[2] + rd[2] * s)];
+    return [clampReach(eye[0] + rd[0] * s), clampReach(eye[1] + rd[1] * s), clampReach(eye[2] + rd[2] * s)];
   }
 
   private project(p: Vec3, b = this.basis()) {
@@ -377,7 +381,7 @@ export class Engine {
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
-      this.dist = Math.max(2.4, Math.min(9, this.dist * Math.exp(e.deltaY * 0.001)));
+      this.dist = Math.max(1.2, Math.min(14, this.dist * Math.exp(e.deltaY * 0.001)));
       this.lastInteract = performance.now();
       this.dirty = true;
     };
@@ -483,6 +487,7 @@ export class Engine {
       gl.uniform1f(loc.uPaper, paper ? 1 : 0);
       gl.uniform3fv(loc.uBg, bg);
       gl.uniform1f(loc.uFrame, this.frame % 64);
+      gl.uniform1f(loc.uLambda, this.lambda);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
     this.drawOverlay(b, paper);
@@ -500,16 +505,29 @@ export class Engine {
       c.lineTo(q.x, q.y);
     };
 
-    if (v.showBox) {
-      c.strokeStyle = `rgba(${ink},0.10)`;
+    // A floor grid under the field, for a sense of up and of scale, fading toward its rim.
+    if (v.showGrid) {
+      const y = -1.1, R = 3, step = 0.5;
       c.lineWidth = dpr;
-      c.beginPath();
-      for (const s of [-1, 1]) for (const t of [-1, 1]) {
-        line([-1, s, t], [1, s, t]);
-        line([s, -1, t], [s, 1, t]);
-        line([s, t, -1], [s, t, 1]);
+      for (let i = -R; i <= R + 1e-6; i += step) {
+        for (const axis of [0, 1]) {
+          const a: Vec3 = axis ? [i, y, -R] : [-R, y, i];
+          const z: Vec3 = axis ? [i, y, R] : [R, y, i];
+          const p = this.project(a, b), q = this.project(z, b);
+          if (p.z <= 0.05 || q.z <= 0.05) continue;
+          const g = c.createLinearGradient(p.x, p.y, q.x, q.y);
+          const edge = Math.max(0, 1 - Math.abs(i) / (R + step));
+          const k = 0.11 * edge;
+          g.addColorStop(0, `rgba(${ink},0)`);
+          g.addColorStop(0.5, `rgba(${ink},${k})`);
+          g.addColorStop(1, `rgba(${ink},0)`);
+          c.strokeStyle = g;
+          c.beginPath();
+          c.moveTo(p.x, p.y);
+          c.lineTo(q.x, q.y);
+          c.stroke();
+        }
       }
-      c.stroke();
     }
 
     // The drawing plane, while the pen is over it.

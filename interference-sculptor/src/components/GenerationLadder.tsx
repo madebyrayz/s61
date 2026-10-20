@@ -1,6 +1,8 @@
-import { Pause, Play } from "lucide-react";
-import { cn, pill } from "@/lib/utils";
+import { Info, Pause, Play } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { GENERATIONS } from "@/copy";
+import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
+import { ToolButton, floating } from "./toolbar";
 
 interface Props {
   /** Sources after each generation, as far as the current one. */
@@ -13,30 +15,29 @@ interface Props {
   onStop: () => void;
 }
 
-/** The generations control, as in week 1: equal steps up, and the chain of source counts below. */
+/**
+ * The generations control, docked at the bottom of the canvas: play, equal
+ * steps up as in week 1, and the chain of source counts beside them.
+ */
 export function GenerationLadder({ counts, value, max, playing, onChange, onPlay, onStop }: Props) {
   const steps = Array.from({ length: max + 1 }, (_, i) => i);
   const chain = counts.slice(0, value + 1);
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
-          {GENERATIONS.label}
-        </h3>
-        <button
-          type="button"
-          onClick={playing ? onStop : onPlay}
-          className={cn(pill(), "inline-flex items-center gap-1.5")}
-        >
-          {playing ? <Pause className="size-3" /> : <Play className="size-3" />}
-          {playing ? GENERATIONS.stopLabel : GENERATIONS.playLabel}
-        </button>
-      </div>
+    <div className={cn(floating, "flex items-center gap-2 py-1.5 pr-2 pl-1.5")} role="group" aria-label={GENERATIONS.label}>
+      <ToolButton
+        label={playing ? GENERATIONS.stopLabel : GENERATIONS.playLabel}
+        tipSide="top"
+        onClick={playing ? onStop : onPlay}
+      >
+        {playing ? <Pause /> : <Play />}
+      </ToolButton>
 
-      <p className="text-xs leading-normal text-muted-foreground">{GENERATIONS.blurb}</p>
+      <div className="h-[24px] w-px bg-border" aria-hidden />
 
-      <div className="flex items-end gap-1" role="group" aria-label={GENERATIONS.label}>
+      <span className="pl-1 text-2xs font-semibold tracking-wide text-muted-foreground uppercase">{GENERATIONS.label}</span>
+
+      <div className="flex items-end gap-0.5">
         {steps.map((g) => {
           const active = g === value;
           const reached = g <= value;
@@ -47,12 +48,12 @@ export function GenerationLadder({ counts, value, max, playing, onChange, onPlay
               onClick={() => onChange(g)}
               aria-pressed={active}
               aria-label={`Generation ${g}`}
-              className="group flex flex-1 cursor-pointer flex-col items-center gap-1.5 rounded-md py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="group flex w-[28px] cursor-pointer flex-col items-center gap-1 rounded-md py-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span
-                style={{ height: `${12 + (g / max) * 56}px` }}
+                style={{ height: `${6 + (g / max) * 16}px` }}
                 className={cn(
-                  "w-full max-w-6 rounded-[3px] transition-colors",
+                  "w-4 rounded-[2px] transition-colors",
                   active
                     ? "bg-primary"
                     : reached
@@ -60,7 +61,7 @@ export function GenerationLadder({ counts, value, max, playing, onChange, onPlay
                       : "bg-secondary group-hover:bg-muted-foreground/40",
                 )}
               />
-              <span className={cn("font-mono text-2xs transition-colors", active ? "text-foreground" : "text-muted-foreground")}>
+              <span className={cn("font-mono text-2xs leading-none transition-colors", active ? "text-foreground" : "text-muted-foreground")}>
                 {g}
               </span>
             </button>
@@ -69,25 +70,33 @@ export function GenerationLadder({ counts, value, max, playing, onChange, onPlay
       </div>
 
       {chain.length ? (
-        <div className="flex flex-col gap-1.5">
-          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 font-mono text-xs">
-            {chain.map((n, i) => (
-              <span key={i} className="flex items-baseline gap-1.5">
-                {i > 0 ? <span className="text-muted-foreground/50">→</span> : null}
-                <span className={i === chain.length - 1 ? "font-semibold text-foreground" : "text-muted-foreground"}>
-                  {n.toLocaleString()}
-                </span>
+        <div className="hidden items-baseline gap-1.5 pl-1 font-mono text-xs whitespace-nowrap sm:flex">
+          {chain.map((n, i) => (
+            <span key={i} className="flex items-baseline gap-1.5">
+              {i > 0 ? <span className="text-muted-foreground/50">→</span> : null}
+              <span className={i === chain.length - 1 ? "font-semibold text-foreground" : "text-muted-foreground"}>
+                {n.toLocaleString()}
               </span>
-            ))}
-            <span className="text-muted-foreground">sources</span>
-          </div>
-          {value > 0 && chain.length > 1 ? (
-            <p className="text-2xs leading-normal text-muted-foreground">
-              {GENERATIONS.countNote(chain[0], chain[chain.length - 1], value)}
-            </p>
-          ) : null}
+            </span>
+          ))}
+          <span className="font-sans text-muted-foreground">sources</span>
         </div>
       ) : null}
-    </section>
+
+      <Popover>
+        <PopoverTrigger asChild>
+          <ToolButton label={`About ${GENERATIONS.label.toLowerCase()}`} tipSide="top" className="size-[28px] [&_svg]:size-3.5">
+            <Info />
+          </ToolButton>
+        </PopoverTrigger>
+        <PopoverContent side="top" className="flex flex-col gap-2">
+          <h3 className="text-sm font-semibold tracking-snug">{GENERATIONS.label}</h3>
+          <p className="text-xs leading-normal text-muted-foreground">{GENERATIONS.blurb}</p>
+          {value > 0 && chain.length > 1 ? (
+            <p className="text-xs leading-normal">{GENERATIONS.countNote(chain[0], chain[chain.length - 1], value)}</p>
+          ) : null}
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 }

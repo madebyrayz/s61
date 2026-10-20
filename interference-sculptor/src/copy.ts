@@ -56,7 +56,7 @@ export const SECTIONS: Record<string, SectionCopy> = {
   pen: {
     title: "Pen",
     intro:
-      "You draw on a plane through the cube that faces you. Turn the cube to draw at a new angle, or slide the plane nearer or further.",
+      "You draw on a plane through the centre that faces you. Orbit to draw at a new angle, or slide the plane nearer or further.",
   },
   physics: {
     title: "Physics",
@@ -80,7 +80,7 @@ export const SECTIONS: Record<string, SectionCopy> = {
 export const CONTROLS = {
   tool: {
     label: "Tool",
-    what: "Draw cuts a slit where you drag. Orbit turns the cube instead, for touch screens or when you want to look without drawing.",
+    what: "Draw cuts a slit where you drag. Orbit turns the view instead, for touch screens or when you want to look without drawing.",
     see: "With Draw on, a dashed square shows the plane your pen is on.",
   },
   handSetsLambda: {
@@ -91,14 +91,14 @@ export const CONTROLS = {
   },
   lambda: {
     label: "Wavelength",
-    what: "The distance from one crest to the next, as a fraction of the cube. Used for every new stroke when the hand is not setting it.",
+    what: "The distance from one crest to the next, in the units of the floor grid (one square is 0.5). Used for every new stroke when the hand is not setting it.",
     see: "Shorter waves make more fringes, packed closer together.",
     hint: "0.12 for fine detail, 0.24 for a few large forms.",
     paper: "λ",
   },
   depth: {
     label: "Drawing depth",
-    what: "Moves the drawing plane toward you or away from you, through the centre of the cube.",
+    what: "Moves the drawing plane toward you or away from you, through the centre.",
     see: "The dashed square slides. Strokes land at that depth.",
   },
   spacing: {
@@ -128,7 +128,7 @@ export const CONTROLS = {
   reach: {
     label: "Reach",
     what: "How weak a wave can get and still make shape. Far from the strokes, waves spread out and fade.",
-    see: "Lower values let the shapes extend to the edges of the cube; higher keeps them close to the strokes.",
+    see: "Lower values let the shapes reach far out into space before they fade; higher keeps them close to the strokes.",
   },
   density: {
     label: "Density",
@@ -157,7 +157,7 @@ export const CONTROLS = {
   },
   quality: {
     label: "Resolution",
-    what: "How many points along each side of the cube the field is computed at. 144 means about three million points.",
+    what: "How many points along each axis the field is computed at. The grid is stretched so it covers all of space: fine near the centre, coarser far away. 176 means about five million points.",
     see: "Higher is smoother and slower to update.",
   },
   showStrokes: {
@@ -165,14 +165,14 @@ export const CONTROLS = {
     what: "Draws your slits, and the sources each generation added, as thin lines and rings.",
     see: "Off leaves only the field.",
   },
-  showBox: {
-    label: "Show cube",
-    what: "The edges of the space the field is computed in.",
-    see: "A faint outline.",
+  showGrid: {
+    label: "Floor grid",
+    what: "A faint grid below the field, half a unit per square, so you can keep track of up and of scale while you orbit.",
+    see: "The field has no edge; the grid is only a guide.",
   },
   autoRotate: {
     label: "Auto-rotate",
-    what: "Turns the cube slowly when you are not touching it.",
+    what: "Turns the view slowly when you are not touching it.",
     see: "The view drifts.",
   },
 } satisfies Record<string, Explainer>;

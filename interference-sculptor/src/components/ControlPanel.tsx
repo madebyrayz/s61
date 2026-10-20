@@ -1,8 +1,22 @@
-import { useState } from "react";
-import { Camera, ChevronDown, Eraser, PanelRightClose, RotateCcw, Sparkles, Undo2 } from "lucide-react";
-import { Button } from "@/ui/button";
-import { Separator } from "@/ui/separator";
-import { cn, pill } from "@/lib/utils";
+import {
+  Atom,
+  Blend,
+  Box,
+  Camera,
+  Cloud,
+  Eye,
+  Info,
+  Palette,
+  Pencil,
+  Rotate3d,
+  RotateCcw,
+  SlidersHorizontal,
+  Trash2,
+  Undo2,
+  Waves,
+} from "lucide-react";
+import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import {
   MAX_GENERATIONS,
   PRESETS,
@@ -12,20 +26,17 @@ import {
   type PaletteName,
   type Params,
   type RenderMode,
-  type Tool,
 } from "@/params";
-import { ACTIONS, CONTROLS, PANEL, PRIMER, SECTIONS } from "@/copy";
-import { ButtonRow, PresetRow, Section, SelectRow, SliderRow, SwitchRow } from "./controls";
+import { ACTIONS, BAKING, CONTROLS, FOOTER_HINT, PANEL, PRIMER, SECTIONS } from "@/copy";
+import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
+import { ButtonRow, PresetRow, SelectRow, SliderRow, SwitchRow } from "./controls";
 import { GenerationLadder } from "./GenerationLadder";
+import { Flyout, Rail, RailDivider, ToolButton, floating } from "./toolbar";
 
-const TOOL_OPTIONS: { value: Tool; label: string }[] = [
-  { value: "draw", label: "Draw" },
-  { value: "orbit", label: "Orbit" },
-];
-const RENDER_OPTIONS: { value: RenderMode; label: string }[] = [
-  { value: "surface", label: "Surface" },
-  { value: "volume", label: "Volume" },
-  { value: "fronts", label: "Wavefronts" },
+const RENDER_OPTIONS: { value: RenderMode; label: string; icon: ReactNode }[] = [
+  { value: "surface", label: "Surface", icon: <Box /> },
+  { value: "volume", label: "Volume", icon: <Cloud /> },
+  { value: "fronts", label: "Wavefronts", icon: <Waves /> },
 ];
 const COLOR_OPTIONS: { value: ColorBy; label: string }[] = [
   { value: "phase", label: "Phase" },
@@ -52,6 +63,7 @@ interface Props {
   counts: number[];
   strokeCount: number;
   playing: boolean;
+  baking: boolean;
   activePreset: number | null;
   onPlay: () => void;
   onStop: () => void;
@@ -60,15 +72,20 @@ interface Props {
   onClear: () => void;
   onReset: () => void;
   onCapture: () => void;
-  onHide: () => void;
 }
 
-export function ControlPanel({
+/**
+ * Every control, laid out like a canvas app around the edges of the screen:
+ * the pen and the edits on the left, how the field is drawn on the right,
+ * generations along the bottom, presets along the top.
+ */
+export function CanvasControls({
   params: p,
   update,
   counts,
   strokeCount,
   playing,
+  baking,
   activePreset,
   onPlay,
   onStop,
@@ -77,9 +94,7 @@ export function ControlPanel({
   onClear,
   onReset,
   onCapture,
-  onHide,
 }: Props) {
-  const [primerOpen, setPrimerOpen] = useState(true);
   const slider = (
     key: "lambda" | "spacing" | "depth" | "threshold" | "reach" | "density" | "exposure",
     min: number,
@@ -98,94 +113,63 @@ export function ControlPanel({
       format={format}
     />
   );
+  const paper = p.background === "paper";
 
   return (
-    <aside
-      aria-label="Sculptor controls"
-      className={cn(
-        "flex h-full w-full flex-col overflow-hidden border-border bg-[var(--panel-bg)] text-card-foreground",
-        "lg:border-l lg:[backdrop-filter:var(--panel-blur)]",
-      )}
-    >
-      <div className="flex shrink-0 items-start justify-between gap-3 px-5 pt-5 pb-4">
-        <div className="flex flex-col gap-0.5">
-          <h1 className="text-base font-semibold tracking-snug">{PANEL.title}</h1>
-          <p className="text-xs text-muted-foreground">{PANEL.subtitle}</p>
-        </div>
-        <button
-          type="button"
-          onClick={onHide}
-          aria-label={PANEL.hide}
-          className={cn(pill(), "inline-flex shrink-0 items-center gap-1.5")}
-        >
-          <PanelRightClose className="size-3" />
-          {PANEL.hide}
-        </button>
-      </div>
-
-      <div className="scroll flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 pb-6">
-        <div className="rounded-lg border border-border bg-muted/40">
-          <button
-            type="button"
-            onClick={() => setPrimerOpen((v) => !v)}
-            aria-expanded={primerOpen}
-            className="flex w-full items-center gap-2 px-3.5 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Sparkles className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="flex-1 text-sm font-medium">{PRIMER.title}</span>
-            <ChevronDown
-              className={cn("size-4 shrink-0 text-muted-foreground transition-transform duration-200", !primerOpen && "-rotate-90")}
-            />
-          </button>
-          {primerOpen ? (
-            <div className="flex flex-col gap-2 px-3.5 pb-3.5">
+    <div className="pointer-events-none absolute inset-0">
+      {/* Top: name and intro on the left, presets in the middle. */}
+      <div className="absolute inset-x-4 top-4 flex flex-col items-start gap-3 lg:flex-row lg:items-center">
+        <div className={cn(floating, "flex items-center gap-1 py-1 pr-1 pl-3.5")}>
+          <h1 className="text-sm font-semibold tracking-snug whitespace-nowrap">{PANEL.title}</h1>
+          <Popover>
+            <PopoverTrigger asChild>
+              <ToolButton label={PRIMER.title} tipSide="bottom" className="size-[32px] [&_svg]:size-4">
+                <Info />
+              </ToolButton>
+            </PopoverTrigger>
+            <PopoverContent side="bottom" align="start" className="flex w-80 flex-col gap-2">
+              <h3 className="text-sm font-semibold tracking-snug">{PANEL.subtitle}</h3>
               {PRIMER.body.map((line, i) => (
                 <p key={i} className="text-xs leading-relaxed text-muted-foreground">
                   {line}
                 </p>
               ))}
-            </div>
-          ) : null}
+            </PopoverContent>
+          </Popover>
         </div>
 
-        <Section copy={SECTIONS.presets}>
+        <div
+          className={cn(
+            floating,
+            "scroll max-w-full overflow-x-auto p-1.5 lg:absolute lg:left-1/2 lg:max-w-[calc(100%-36rem)] lg:-translate-x-1/2",
+          )}
+          aria-label={SECTIONS.presets.title}
+        >
           <PresetRow
             names={PRESETS.map((x) => x.name)}
             notes={PRESETS.map((x) => x.note)}
             active={activePreset}
             onPick={onPreset}
+            nowrap
           />
-        </Section>
+        </div>
+      </div>
 
-        <Separator />
-
-        <GenerationLadder
-          counts={counts}
-          value={p.generations}
-          max={MAX_GENERATIONS}
-          playing={playing}
-          onChange={(v) => update("generations", v)}
-          onPlay={onPlay}
-          onStop={onStop}
-        />
-
-        <Separator />
-
-        <Section copy={SECTIONS.pen}>
-          <ButtonRow<Tool> id="tool" copy={CONTROLS.tool} value={p.tool} options={TOOL_OPTIONS} onChange={(v) => update("tool", v)} />
-          <SwitchRow
-            id="hand-lambda"
-            copy={CONTROLS.handSetsLambda}
-            checked={p.handSetsLambda}
-            onChange={(v) => update("handSetsLambda", v)}
-          />
+      {/* Left: the pen, and edits to what has been drawn. */}
+      <Rail label="Pen" className="absolute top-1/2 left-4 -translate-y-1/2">
+        <ToolButton label="Draw" shortcut="D" active={p.tool === "draw"} onClick={() => update("tool", "draw")}>
+          <Pencil />
+        </ToolButton>
+        <ToolButton label="Orbit" shortcut="O" active={p.tool === "orbit"} onClick={() => update("tool", "orbit")}>
+          <Rotate3d />
+        </ToolButton>
+        <RailDivider />
+        <Flyout icon={<SlidersHorizontal />} label={SECTIONS.pen.title} intro={SECTIONS.pen.intro} side="right">
+          <SwitchRow id="hand-lambda" copy={CONTROLS.handSetsLambda} checked={p.handSetsLambda} onChange={(v) => update("handSetsLambda", v)} />
           {p.handSetsLambda ? null : slider("lambda", 0.1, 0.28, ["fine", "broad"], (v) => `λ ${v.toFixed(2)}`)}
           {slider("depth", -0.8, 0.8, ["near", "far"], (v) => (v >= 0 ? "+" : "") + v.toFixed(2))}
-        </Section>
-
-        <Separator />
-
-        <Section copy={SECTIONS.physics}>
+        </Flyout>
+        <Flyout icon={<Atom />} label={SECTIONS.physics.title} intro={SECTIONS.physics.intro} side="right">
           {slider("spacing", 0.3, 2.5, ["one slit", "a row of pinholes"], (v) => `${v.toFixed(2)} λ`)}
           <SwitchRow id="which-path" copy={CONTROLS.whichPath} checked={p.whichPath} onChange={(v) => update("whichPath", v)} />
           <ButtonRow
@@ -195,57 +179,65 @@ export function ControlPanel({
             options={QUALITY_OPTIONS}
             onChange={(v) => update("quality", Number(v))}
           />
-        </Section>
+        </Flyout>
+        <RailDivider />
+        <ToolButton label={ACTIONS.undo.label} shortcut="⌘Z" onClick={onUndo} disabled={!strokeCount}>
+          <Undo2 />
+        </ToolButton>
+        <ToolButton label={ACTIONS.clear.hint} onClick={onClear} disabled={!strokeCount}>
+          <Trash2 />
+        </ToolButton>
+        <ToolButton label={ACTIONS.reset.hint} onClick={onReset}>
+          <RotateCcw />
+        </ToolButton>
+      </Rail>
 
-        <Separator />
-
-        <Section copy={SECTIONS.shape}>
-          <ButtonRow<RenderMode> id="render" copy={CONTROLS.render} value={p.render} options={RENDER_OPTIONS} onChange={(v) => update("render", v)} />
+      {/* Right: how the field becomes a picture. */}
+      <Rail label="Render" className="absolute top-1/2 right-4 -translate-y-1/2">
+        {RENDER_OPTIONS.map((o) => (
+          <ToolButton key={o.value} label={o.label} tipSide="left" active={p.render === o.value} onClick={() => update("render", o.value)}>
+            {o.icon}
+          </ToolButton>
+        ))}
+        <RailDivider />
+        <Flyout icon={<Blend />} label={SECTIONS.shape.title} intro={SECTIONS.shape.intro} side="left">
           {slider("threshold", 0.05, 0.95, ["thick", "thin"])}
-          {slider("reach", 0.01, 0.4, ["to the edges", "near the strokes"])}
+          {slider("reach", 0.01, 0.4, ["far out", "near the strokes"])}
           {p.render === "surface" ? null : slider("density", 0.05, 1.5)}
           {slider("exposure", 0.2, 4, undefined, (v) => `×${v.toFixed(2)}`)}
-        </Section>
-
-        <Separator />
-
-        <Section copy={SECTIONS.colour}>
+        </Flyout>
+        <Flyout icon={<Palette />} label={SECTIONS.colour.title} intro={SECTIONS.colour.intro} side="left">
           <ButtonRow<ColorBy> id="colour-by" copy={CONTROLS.colorBy} value={p.colorBy} options={COLOR_OPTIONS} onChange={(v) => update("colorBy", v)} />
           <SelectRow<PaletteName> id="palette" copy={CONTROLS.palette} value={p.palette} options={PALETTE_OPTIONS} onChange={(v) => update("palette", v)} />
           <ButtonRow<Background> id="ground" copy={CONTROLS.background} value={p.background} options={GROUND_OPTIONS} onChange={(v) => update("background", v)} />
-        </Section>
-
-        <Separator />
-
-        <Section copy={SECTIONS.view}>
+        </Flyout>
+        <Flyout icon={<Eye />} label={SECTIONS.view.title} side="left">
           <SwitchRow id="strokes" copy={CONTROLS.showStrokes} checked={p.showStrokes} onChange={(v) => update("showStrokes", v)} />
-          <SwitchRow id="box" copy={CONTROLS.showBox} checked={p.showBox} onChange={(v) => update("showBox", v)} />
+          <SwitchRow id="grid" copy={CONTROLS.showGrid} checked={p.showGrid} onChange={(v) => update("showGrid", v)} />
           <SwitchRow id="rotate" copy={CONTROLS.autoRotate} checked={p.autoRotate} onChange={(v) => update("autoRotate", v)} />
-        </Section>
-      </div>
+        </Flyout>
+        <RailDivider />
+        <ToolButton label={ACTIONS.capture.hint} tipSide="left" onClick={onCapture}>
+          <Camera />
+        </ToolButton>
+      </Rail>
 
-      <div className="shrink-0 border-t border-border bg-background/40 px-5 py-4">
-        <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-3 gap-2">
-            <Button variant="secondary" size="sm" onClick={onUndo} disabled={!strokeCount} title={ACTIONS.undo.hint}>
-              <Undo2 />
-              {ACTIONS.undo.label}
-            </Button>
-            <Button variant="outline" size="sm" onClick={onClear} disabled={!strokeCount} title={ACTIONS.clear.hint}>
-              <Eraser />
-              {ACTIONS.clear.label}
-            </Button>
-            <Button variant="outline" size="sm" onClick={onReset} title={ACTIONS.reset.hint}>
-              <RotateCcw />
-              {ACTIONS.reset.label}
-            </Button>
-          </div>
-          <Button variant="ghost" size="sm" onClick={onCapture} title={ACTIONS.capture.hint}>
-            <Camera />
-            {ACTIONS.capture.label}
-          </Button>
-        </div>
+      {/* Bottom: generations, and how to drive the canvas, centred. */}
+      <div className="absolute inset-x-4 bottom-4 flex flex-col items-center gap-2">
+        <GenerationLadder
+          counts={counts}
+          value={p.generations}
+          max={MAX_GENERATIONS}
+          playing={playing}
+          onChange={(v) => update("generations", v)}
+          onPlay={onPlay}
+          onStop={onStop}
+        />
+        <p className={cn("text-center text-2xs", paper ? "text-neutral-500" : "text-muted-foreground")}>
+          {baking ? BAKING : FOOTER_HINT}
+        </p>
       </div>
-    </aside>
+    </div>
   );
 }
+

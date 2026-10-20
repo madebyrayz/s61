@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PanelRightOpen } from "lucide-react";
-import { ControlPanel } from "@/components/ControlPanel";
+import { CanvasControls } from "@/components/ControlPanel";
 import { Engine } from "@/sim/engine";
 import type { Stroke } from "@/sim/field";
-import { BAKING, FOOTER_HINT, PANEL } from "@/copy";
-import { cn, pill } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { DEFAULTS, MAX_GENERATIONS, PRESETS, prefersReducedMotion, type Params, type ViewParams } from "@/params";
 
 /** Pause between generations while play is running. */
@@ -24,7 +22,6 @@ export default function App() {
   const [counts, setCounts] = useState<number[]>([]);
   const [baking, setBaking] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(true);
   const [presetStrokes, setPresetStrokes] = useState<Stroke[] | null>(PRESETS[0].strokes);
   const playTarget = useRef(0);
 
@@ -94,7 +91,12 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         undo();
+        return;
       }
+      const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable]");
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "d") setParams((prev) => ({ ...prev, tool: "draw" }));
+      if (e.key === "o") setParams((prev) => ({ ...prev, tool: "orbit" }));
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
@@ -121,73 +123,46 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-full w-full flex-col bg-background lg:flex-row">
-      <div className="relative min-h-0 min-w-0 flex-1">
-        <canvas ref={canvas} className="absolute inset-0 size-full" />
-        <canvas
-          ref={overlay}
-          className={cn("absolute inset-0 size-full", params.tool === "draw" ? "cursor-crosshair" : "cursor-grab")}
-        />
+    <div className="relative h-full w-full overflow-hidden bg-background">
+      <canvas ref={canvas} className="absolute inset-0 size-full" />
+      <canvas
+        ref={overlay}
+        className={cn("absolute inset-0 size-full", params.tool === "draw" ? "cursor-crosshair" : "cursor-grab")}
+      />
 
-        {error ? (
-          <p className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-muted-foreground">{error}</p>
-        ) : null}
-
-        <p
-          className={cn(
-            "pointer-events-none absolute bottom-4 left-4 text-2xs",
-            params.background === "paper" ? "text-neutral-500" : "text-muted-foreground",
-          )}
-        >
-          {baking ? BAKING : FOOTER_HINT}
-        </p>
-
-        {!panelOpen ? (
-          <button
-            type="button"
-            onClick={() => setPanelOpen(true)}
-            aria-label={PANEL.show}
-            className={cn(pill(), "absolute top-4 right-4 inline-flex items-center gap-1.5 bg-[var(--panel-bg)]")}
-          >
-            <PanelRightOpen className="size-3.5" />
-            {PANEL.show}
-          </button>
-        ) : null}
-      </div>
-
-      {panelOpen ? (
-        <div className="h-[56dvh] w-full shrink-0 border-t border-border lg:h-full lg:w-[380px] lg:border-t-0">
-          <ControlPanel
-            params={params}
-            update={update}
-            counts={counts}
-            strokeCount={strokes.length}
-            playing={playing}
-            activePreset={activePreset}
-            onPlay={play}
-            onStop={stop}
-            onPreset={(i) => {
-              stop();
-              setStrokes(PRESETS[i].strokes);
-              setPresetStrokes(PRESETS[i].strokes);
-              setParams((prev) => ({ ...prev, ...DEFAULTS, ...PRESETS[i].values, autoRotate: prev.autoRotate, quality: prev.quality, tool: prev.tool }));
-            }}
-            onUndo={undo}
-            onClear={() => {
-              setStrokes([]);
-              setPresetStrokes(null);
-            }}
-            onReset={() => {
-              stop();
-              setParams(start());
-              setStrokes(PRESETS[0].strokes);
-              setPresetStrokes(PRESETS[0].strokes);
-            }}
-            onCapture={saveImage}
-            onHide={() => setPanelOpen(false)}
-          />
-        </div>
+      {error ? (
+        <p className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-muted-foreground">{error}</p>
       ) : null}
+
+      <CanvasControls
+        params={params}
+        update={update}
+        counts={counts}
+        strokeCount={strokes.length}
+        playing={playing}
+        baking={baking}
+        activePreset={activePreset}
+        onPlay={play}
+        onStop={stop}
+        onPreset={(i) => {
+          stop();
+          setStrokes(PRESETS[i].strokes);
+          setPresetStrokes(PRESETS[i].strokes);
+          setParams((prev) => ({ ...prev, ...DEFAULTS, ...PRESETS[i].values, autoRotate: prev.autoRotate, quality: prev.quality, tool: prev.tool }));
+        }}
+        onUndo={undo}
+        onClear={() => {
+          setStrokes([]);
+          setPresetStrokes(null);
+        }}
+        onReset={() => {
+          stop();
+          setParams(start());
+          setStrokes(PRESETS[0].strokes);
+          setPresetStrokes(PRESETS[0].strokes);
+        }}
+        onCapture={saveImage}
+      />
     </div>
   );
 }

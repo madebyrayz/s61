@@ -21,7 +21,7 @@ export interface ViewParams {
   exposure: number;
   reach: number;
   showStrokes: boolean;
-  showBox: boolean;
+  showGrid: boolean;
   autoRotate: boolean;
 }
 
@@ -33,7 +33,7 @@ export interface Params extends ViewParams {
 }
 
 export const MAX_GENERATIONS = 3;
-export const QUALITIES = [80, 112, 144];
+export const QUALITIES = [112, 144, 176];
 
 export const DEFAULTS: Params = {
   tool: "draw",
@@ -49,12 +49,12 @@ export const DEFAULTS: Params = {
   exposure: 1,
   reach: 0.08,
   showStrokes: true,
-  showBox: true,
+  showGrid: true,
   autoRotate: true,
   whichPath: false,
   spacing: 0.42,
   generations: 0,
-  quality: 112,
+  quality: 144,
 };
 
 export const prefersReducedMotion = () =>

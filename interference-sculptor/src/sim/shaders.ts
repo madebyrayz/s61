@@ -15,11 +15,24 @@
  *         dark one. The 1/r falloff cancels in the ratio, so the pattern reads
  *         the same near the strokes and far from them.
  *
- * 2. MARCH: a ray per pixel through the box [-1, 1]³, reading the texture.
+ * 2. MARCH: a ray per pixel through all of space, reading the texture.
  *    Three ways to turn the numbers into a picture: emission–absorption volume,
  *    an isosurface found by stepping and bisecting, or the wavefronts
  *    (surfaces of constant phase) as stacked translucent shells.
+ *
+ * The field has no box. The texture is warped so that it covers every point:
+ * texture coordinate u ∈ (-1, 1) maps to world p = W·u / √(1 − u²) on each
+ * axis. Near the strokes voxels are small; far away they grow, which suits a
+ * field whose fringes spread out with distance. The picture fades
+ * into the background as the waves weaken, out to FADE_END, instead of
+ * stopping at a wall.
  */
+
+/** World units per texture unit at the centre. */
+export const WARP = 1.6;
+/** Distance where the field has faded out completely. Inside the texture's reach (≈ √(N/2)). */
+export const FADE_START = 1.6;
+export const FADE_END = 3.6;
 
 export const FULLSCREEN_VS = /* glsl */ `#version 300 es
 void main() {
@@ -39,7 +52,8 @@ uniform float uSoften;
 out vec4 o;
 
 void main() {
-  vec3 p = vec3(gl_FragCoord.xy / uN * 2.0 - 1.0, uZ);
+  vec3 u = vec3(gl_FragCoord.xy / uN * 2.0 - 1.0, uZ);
+  vec3 p = ${WARP.toFixed(3)} * u / sqrt(1.0 - u * u);
   float I = 0.0, ar = 0.0, ai = 0.0, tr = 0.0, ti = 0.0, m2 = 0.0;
   float g = -1.0;
   for (int i = 0; i < uCount; i++) {
@@ -77,31 +91,61 @@ uniform float uN;         // grid size, for the step length
 uniform float uPaper;     // 1 on the light background
 uniform vec3 uBg;
 uniform float uFrame;
+uniform float uLambda;    // shortest wavelength in the drawing, to know when the grid can no longer resolve it
 out vec4 o;
 
 const float TAU = 6.28318530718;
+const float WARP = ${WARP.toFixed(3)};
+const float FADE_START = ${FADE_START.toFixed(3)};
+const float FADE_END = ${FADE_END.toFixed(3)};
 vec3 pal(float t) { return uPa + uPb * cos(TAU * (uPc * t + uPd)); }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uFrame * 0.618) * 43758.5453); }
 
-vec4 S(vec3 p) { return texture(uVol, p * 0.5 + 0.5); }
+/* World ↔ texture. jac is du/dp per axis: how many texture units one world unit spans there. */
+vec3 toU(vec3 p) { vec3 q = p / WARP; return q / sqrt(1.0 + q * q); }
+vec3 jac(vec3 p) { vec3 q = p / WARP; vec3 s = 1.0 + q * q; return 1.0 / (WARP * s * sqrt(s)); }
+/* World distance per step along rd, so each step crosses about 0.8 of a voxel wherever it is. */
+float stepAt(vec3 p, vec3 rd) { return (1.6 / uN) / length(jac(p) * rd); }
+/* 1 where a voxel is small enough to resolve a wavelength, 0 where it is not. */
+float resolved(vec3 p) {
+  vec3 j = jac(p);
+  float vox = (2.0 / uN) / min(j.x, min(j.y, j.z));
+  return 1.0 - smoothstep(0.3 * uLambda, 0.6 * uLambda, vox);
+}
+
+vec4 S(vec3 p) { return texture(uVol, toU(p) * 0.5 + 0.5); }
 float intensity(vec4 s) { return s.r / max(1.0 - s.r, 1e-3); }
 float phaseOf(vec4 s) { return atan(s.b - 0.5, s.g - 0.5); }
+float fade(vec3 p) { return 1.0 - smoothstep(FADE_START, FADE_END, length(p)); }
 /* The shape field: fringe visibility, faded out where the waves are too weak to matter. */
-float F(vec4 s) { return s.a * (1.0 - exp(-intensity(s) * uExposure / uReach)); }
-float Fp(vec3 p) { return F(S(p)); }
+float F(vec4 s, vec3 p) { return s.a * (1.0 - exp(-intensity(s) * uExposure / uReach)) * fade(p); }
+float Fp(vec3 p) { return F(S(p), p); }
 
+/* Central differences, one voxel wide on each axis, in world units. */
 vec3 gradF(vec3 p) {
-  float e = 1.2 / uN;
+  vec3 h = (1.2 / uN) / jac(p);
   return vec3(
-    Fp(p + vec3(e, 0, 0)) - Fp(p - vec3(e, 0, 0)),
-    Fp(p + vec3(0, e, 0)) - Fp(p - vec3(0, e, 0)),
-    Fp(p + vec3(0, 0, e)) - Fp(p - vec3(0, 0, e)));
+    (Fp(p + vec3(h.x, 0, 0)) - Fp(p - vec3(h.x, 0, 0))) / h.x,
+    (Fp(p + vec3(0, h.y, 0)) - Fp(p - vec3(0, h.y, 0))) / h.y,
+    (Fp(p + vec3(0, 0, h.z)) - Fp(p - vec3(0, 0, h.z))) / h.z);
+}
+vec3 gradIm(vec3 p) {
+  vec3 h = (1.2 / uN) / jac(p);
+  return vec3(
+    (S(p + vec3(h.x, 0, 0)).b - S(p - vec3(h.x, 0, 0)).b) / h.x,
+    (S(p + vec3(0, h.y, 0)).b - S(p - vec3(0, h.y, 0)).b) / h.y,
+    (S(p + vec3(0, 0, h.z)).b - S(p - vec3(0, 0, h.z)).b) / h.z);
 }
 
 float colorT(vec4 s, vec3 p) {
   if (uColorBy == 0) return phaseOf(s) / TAU + 0.5;
-  if (uColorBy == 1) return F(s);
-  return p.y * 0.5 + 0.5;
+  if (uColorBy == 1) return F(s, p);
+  return clamp(p.y * 0.5 + 0.5, 0.0, 1.0);
+}
+/* Where the grid is too coarse to follow the phase, its bands blur to the palette's average, uPa. */
+vec3 colorAt(vec4 s, vec3 p) {
+  vec3 c = pal(colorT(s, p));
+  return uColorBy == 0 ? mix(uPa, c, resolved(p)) : c;
 }
 
 vec3 background(vec2 uv) {
@@ -115,30 +159,30 @@ void main() {
   vec3 ro = uEye;
   vec3 bg = background(uv);
 
-  vec3 inv = 1.0 / rd;
-  vec3 t0 = (-1.0 - ro) * inv, t1 = (1.0 - ro) * inv;
-  vec3 tmin = min(t0, t1), tmax = max(t0, t1);
-  float tn = max(max(tmin.x, tmin.y), tmin.z);
-  float tf = min(min(tmax.x, tmax.y), tmax.z);
-  if (tf <= max(tn, 0.0)) { o = vec4(bg, 1.0); return; }
-  tn = max(tn, 0.0) + 1e-4;
+  /* The field lives inside a sphere of radius FADE_END; march the part of the ray inside it. */
+  float b = dot(ro, rd), c = dot(ro, ro) - FADE_END * FADE_END;
+  float disc = b * b - c;
+  if (disc <= 0.0) { o = vec4(bg, 1.0); return; }
+  float tn = max(-b - sqrt(disc), 0.05);
+  float tf = -b + sqrt(disc);
+  if (tf <= tn) { o = vec4(bg, 1.0); return; }
 
-  float dt = 1.6 / uN;
   float jit = hash(gl_FragCoord.xy);
   vec3 L = normalize(vec3(0.45, 0.8, 0.35));
 
   if (uMode == 0) {
     /* Emission–absorption. On the dark ground the field glows; on paper it is ink. */
     vec3 C = vec3(0.0), T = vec3(1.0);
-    float t = tn + dt * jit;
-    for (int i = 0; i < 600; i++) {
+    float t = tn + stepAt(ro + rd * tn, rd) * jit;
+    for (int i = 0; i < 900; i++) {
       if (t > tf) break;
       vec3 p = ro + rd * t;
+      float dt = stepAt(p, rd);
       vec4 s = S(p);
-      float f = F(s);
+      float f = F(s, p);
       float d = uDensity * 14.0 * smoothstep(uThreshold - 0.12, uThreshold + 0.12, f) * f;
       if (d > 1e-4) {
-        vec3 col = pal(colorT(s, p));
+        vec3 col = colorAt(s, p);
         if (uPaper > 0.5) {
           T *= exp(-d * dt * (1.15 - col) * 1.6);
         } else {
@@ -157,20 +201,9 @@ void main() {
   }
 
   if (uMode == 1) {
-    /* Isosurface F = threshold. A ray that enters the box already inside shows the cut face. */
-    vec4 s0 = S(ro + rd * tn);
-    if (F(s0) > uThreshold) {
-      vec3 p = ro + rd * tn;
-      vec3 q = abs(p);
-      vec3 n = q.x > q.y && q.x > q.z ? vec3(sign(p.x), 0, 0) : q.y > q.z ? vec3(0, sign(p.y), 0) : vec3(0, 0, sign(p.z));
-      vec3 base = pal(colorT(s0, p));
-      float shade = 0.55 + 0.35 * max(dot(n, L), 0.0);
-      float stripe = 0.85 + 0.15 * smoothstep(0.0, 0.08, F(s0) - uThreshold);
-      o = vec4(mix(bg, base * shade * stripe, 0.96), 1.0);
-      return;
-    }
-    float t = tn + dt * jit, prevT = tn, prevF = F(s0);
-    for (int i = 0; i < 600; i++) {
+    /* Isosurface F = threshold, found by stepping until F crosses it and bisecting. */
+    float t = tn + stepAt(ro + rd * tn, rd) * jit, prevT = tn;
+    for (int i = 0; i < 900; i++) {
       if (t > tf) break;
       vec3 p = ro + rd * t;
       float f = Fp(p);
@@ -189,13 +222,13 @@ void main() {
         float fres = pow(1.0 - abs(dot(n, -rd)), 3.0);
         vec3 h = normalize(L - rd);
         float spec = pow(max(dot(n, h), 0.0), 48.0);
-        vec3 base = pal(colorT(s, p));
+        vec3 base = colorAt(s, p);
         vec3 col = base * (0.16 + 0.78 * dif + 0.12 * back) * ao + spec * 0.35 + fres * (uPaper > 0.5 ? -0.15 : 0.25) * base;
         o = vec4(col, 1.0);
         return;
       }
-      prevT = t; prevF = f;
-      t += dt;
+      prevT = t;
+      t += stepAt(p, rd);
     }
     o = vec4(bg, 1.0);
     return;
@@ -205,26 +238,22 @@ void main() {
      as opaque as the wave is strong there. Dark fringes punch holes through. */
   vec3 C = vec3(0.0);
   float T = 1.0;
-  float t = tn + dt * jit;
+  float t = tn + stepAt(ro + rd * tn, rd) * jit;
   vec4 sp = S(ro + rd * t);
   float prevIm = sp.b - 0.5;
-  for (int i = 0; i < 600; i++) {
-    t += dt;
+  for (int i = 0; i < 900; i++) {
+    t += stepAt(ro + rd * t, rd);
     if (t > tf) break;
     vec3 p = ro + rd * t;
     vec4 s = S(p);
     float im = s.b - 0.5;
     if (prevIm < 0.0 && im >= 0.0 && s.g > 0.5) {
-      float f = F(s);
-      float strength = 1.0 - exp(-intensity(s) * uExposure / uReach);
+      float f = F(s, p);
+      float strength = (1.0 - exp(-intensity(s) * uExposure / uReach)) * fade(p) * resolved(p);
       float a = uDensity * strength * smoothstep(uThreshold - 0.2, uThreshold + 0.1, s.a);
       if (a > 0.002) {
         vec3 base = pal(uColorBy == 0 ? f : colorT(s, p));
-        vec3 g = vec3(
-          S(p + vec3(dt, 0, 0)).b - S(p - vec3(dt, 0, 0)).b,
-          S(p + vec3(0, dt, 0)).b - S(p - vec3(0, dt, 0)).b,
-          S(p + vec3(0, 0, dt)).b - S(p - vec3(0, 0, dt)).b);
-        vec3 n = normalize(g + 1e-6);
+        vec3 n = normalize(gradIm(p) + 1e-6);
         float facing = abs(dot(n, rd));
         float rim = pow(1.0 - facing, 2.0);
         float dif = 0.55 + 0.45 * abs(dot(n, L));
