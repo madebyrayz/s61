@@ -14,7 +14,9 @@ import {
 import { PALETTES, type ViewParams } from "@/params";
 
 /** Grid size while a stroke is still being drawn: coarse, so it keeps up with the hand. */
-const LIVE_N = 48;
+const LIVE_N = 40;
+/** Grid used only for Save image. */
+export const CAPTURE_N = 176;
 /** Bake work allowed per frame, in (voxels × sources). */
 const BUDGET = 2e7;
 
@@ -176,8 +178,28 @@ export class Engine {
     this.startBake(all, spec.quality, false);
   }
 
-  /** Renders a frame and returns a PNG of the view, strokes included when they are shown. */
-  capture(): Promise<Blob | null> {
+  /**
+   * A PNG of the view at full quality: the field is re-baked at `n` and the
+   * frame rendered at `scale` times the screen size, in one go, then the
+   * preview volume and size come back. The high-resolution volume is freed
+   * afterwards, so it costs memory only while the file is being made.
+   */
+  async capture(n = CAPTURE_N, scale = 2): Promise<Blob | null> {
+    const gl = this.gl;
+    const prevFront = this.front, prevJob = this.job;
+    const W = this.canvas.width, H = this.canvas.height;
+    let hi: Volume | null = null;
+    if (this.sources.length) {
+      hi = this.makeVolume(n);
+      const { count, invScale } = this.upload(this.sources);
+      this.job = { vol: hi, layer: 0, count, invScale, live: true };
+      while (this.job) this.stepBake();
+      this.front = hi;
+    }
+    this.canvas.width = W * scale;
+    this.canvas.height = H * scale;
+    this.overlay.width = W * scale;
+    this.overlay.height = H * scale;
     this.render();
     const out = document.createElement("canvas");
     out.width = this.canvas.width;
@@ -185,7 +207,16 @@ export class Engine {
     const c = out.getContext("2d")!;
     c.drawImage(this.canvas, 0, 0);
     c.drawImage(this.overlay, 0, 0, out.width, out.height);
-    return new Promise((res) => out.toBlob(res, "image/png"));
+    const blob = await new Promise<Blob | null>((res) => out.toBlob(res, "image/png"));
+    this.canvas.width = W;
+    this.canvas.height = H;
+    this.overlay.width = W;
+    this.overlay.height = H;
+    this.front = prevFront;
+    this.job = prevJob;
+    if (hi) gl.deleteTexture(hi.tex);
+    this.dirty = true;
+    return blob;
   }
 
   /* ------------------------------------------------------------------ */
@@ -203,8 +234,13 @@ export class Engine {
     return { tex, n };
   }
 
-  /** Two volumes per size, so a bake never writes into the one on screen. */
+  /** Two volumes per size, so a bake never writes into the one on screen. Other sizes are freed. */
   private backVolume(n: number) {
+    for (const [size, pair] of this.vols) {
+      if (size === n || pair.includes(this.front!)) continue;
+      for (const v of pair) this.gl.deleteTexture(v.tex);
+      this.vols.delete(size);
+    }
     let pair = this.vols.get(n);
     if (!pair) {
       pair = [this.makeVolume(n), this.makeVolume(n)];

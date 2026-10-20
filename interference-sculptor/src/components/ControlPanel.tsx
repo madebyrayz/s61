@@ -16,11 +16,12 @@ import {
   Waves,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { cn, pill } from "@/lib/utils";
 import {
   MAX_GENERATIONS,
   PRESETS,
   QUALITIES,
+  QUALITY_LABELS,
   type Background,
   type ColorBy,
   type PaletteName,
@@ -32,6 +33,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { ButtonRow, PresetRow, SelectRow, SliderRow, SwitchRow } from "./controls";
 import { GenerationLadder } from "./GenerationLadder";
 import { Flyout, Rail, RailDivider, ToolButton, floating } from "./toolbar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 
 const RENDER_OPTIONS: { value: RenderMode; label: string; icon: ReactNode }[] = [
   { value: "surface", label: "Surface", icon: <Box /> },
@@ -55,7 +57,7 @@ const GROUND_OPTIONS: { value: Background; label: string }[] = [
   { value: "dark", label: "Dark" },
   { value: "paper", label: "Paper" },
 ];
-const QUALITY_OPTIONS = QUALITIES.map((q) => ({ value: String(q), label: `${q}³` }));
+const QUALITY_OPTIONS = QUALITIES.map((q, i) => ({ value: String(q), label: QUALITY_LABELS[i] }));
 
 interface Props {
   params: Params;
@@ -153,6 +155,36 @@ export function CanvasControls({
             nowrap
           />
         </div>
+
+        {/* Preview resolution. Save image ignores it and always renders at full quality. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              role="group"
+              aria-label={CONTROLS.quality.label}
+              className={cn(floating, "flex items-center gap-1 p-1.5 lg:ml-auto")}
+            >
+              {QUALITY_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => update("quality", Number(o.value))}
+                  aria-pressed={String(p.quality) === o.value}
+                  className={pill(String(p.quality) === o.value)}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent variant="rich" side="bottom" align="end">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-semibold tracking-snug">{CONTROLS.quality.label}</span>
+              <p className="text-xs leading-normal">{CONTROLS.quality.what}</p>
+              <p className="text-xs leading-normal text-muted-foreground">{CONTROLS.quality.see}</p>
+            </div>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       {/* Left: the pen, and edits to what has been drawn. */}
@@ -172,13 +204,6 @@ export function CanvasControls({
         <Flyout icon={<Atom />} label={SECTIONS.physics.title} intro={SECTIONS.physics.intro} side="right">
           {slider("spacing", 0.3, 2.5, ["one slit", "a row of pinholes"], (v) => `${v.toFixed(2)} λ`)}
           <SwitchRow id="which-path" copy={CONTROLS.whichPath} checked={p.whichPath} onChange={(v) => update("whichPath", v)} />
-          <ButtonRow
-            id="quality"
-            copy={CONTROLS.quality}
-            value={String(p.quality)}
-            options={QUALITY_OPTIONS}
-            onChange={(v) => update("quality", Number(v))}
-          />
         </Flyout>
         <RailDivider />
         <ToolButton label={ACTIONS.undo.label} shortcut="⌘Z" onClick={onUndo} disabled={!strokeCount}>

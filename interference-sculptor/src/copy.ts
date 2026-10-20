@@ -156,9 +156,9 @@ export const CONTROLS = {
     see: "On paper, Volume reads like a watercolour.",
   },
   quality: {
-    label: "Resolution",
-    what: "How many points along each axis the field is computed at. The grid is stretched so it covers all of space: fine near the centre, coarser far away. 176 means about five million points.",
-    see: "Higher is smoother and slower to update.",
+    label: "Preview resolution",
+    what: "How finely the field is computed while you work: Draft 64³, Normal 96³, Fine 128³ points. Save image ignores this and always renders at 176³ and twice the screen size.",
+    see: "Draft keeps the fan quiet; Fine is smoother and slower to update. The picture you save is the same either way.",
   },
   showStrokes: {
     label: "Show strokes",

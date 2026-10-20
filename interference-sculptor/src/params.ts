@@ -33,7 +33,9 @@ export interface Params extends ViewParams {
 }
 
 export const MAX_GENERATIONS = 3;
-export const QUALITIES = [80, 112, 144];
+/** Preview grids: draft, normal, fine. Save image always uses the capture grid in engine.ts. */
+export const QUALITIES = [64, 96, 128];
+export const QUALITY_LABELS = ["Draft", "Normal", "Fine"];
 
 export const DEFAULTS: Params = {
   tool: "draw",
@@ -54,7 +56,7 @@ export const DEFAULTS: Params = {
   whichPath: false,
   spacing: 0.42,
   generations: 0,
-  quality: 112,
+  quality: 64,
 };
 
 export const prefersReducedMotion = () =>
