@@ -25,6 +25,7 @@ export interface SectionCopy {
 export const PRIMER = {
   title: "Intro",
   body: [
+    "Threads is the brush. Each stroke is a slit; its waves fill the space around it. Tiny particles are born at your pen tip and ride those waves, following the phase and bunching into the bright fringes, each one spinning. Neighbouring spins fall into step (a Kuramoto model) and the paths braid. They keep growing after you stop.",
     "Every stroke is a slit cut into empty space. Each point on it sends out a spherical wave, like a stone dropped in water, but in 3D.",
     "Where two waves arrive in step they add up and get brighter. Where one arrives at a crest and the other at a trough, they cancel. That is the double-slit experiment.",
     "The GPU adds up every wave at every point of a 3D grid, then shoots a ray through each pixel and turns what it finds into a shape. Two short slits give nested hyperbolic sheets. Nobody drew those: they fall out of the rule.",
@@ -38,14 +39,10 @@ export const PANEL = {
   show: "Controls",
 };
 
-export const GENERATIONS = {
-  label: "Generations",
-  blurb:
-    "Huygens' principle says every point a wave reaches becomes a new source. Each generation takes the brightest points of the field and makes them sources too, then sums everything again: the rule running on its own output.",
-  countNote: (from: number, to: number, gens: number) =>
-    `${from.toLocaleString()} sources on your strokes, ${to.toLocaleString()} after ${gens} ${gens === 1 ? "generation" : "generations"}.`,
-  playLabel: "Play",
-  stopLabel: "Stop",
+export const THREADS = {
+  growOn: "Growing: threads keep sprouting along your strokes",
+  growOff: "Paused: nothing new sprouts until you draw",
+  count: (n: number) => `${n.toLocaleString()} threads`,
 };
 
 export const SECTIONS: Record<string, SectionCopy> = {
@@ -61,6 +58,11 @@ export const SECTIONS: Record<string, SectionCopy> = {
   physics: {
     title: "Physics",
     intro: "What the waves do between your strokes and the picture.",
+  },
+  threads: {
+    title: "Threads",
+    intro:
+      "The brush. Particles born on your line ride the wave, bunch into the bright fringes and twist with their spin. Every frame each one adds a short mark; nothing is erased, so the picture grows.",
   },
   shape: {
     title: "Shape",
@@ -116,8 +118,8 @@ export const CONTROLS = {
   },
   render: {
     label: "Render",
-    what: "Surface cuts the field at one level and shades it as a solid. Volume treats it as glowing fog. Wavefronts draws the surfaces where the phase is zero, one per wavelength.",
-    see: "Surface reads as sculpture, Volume as light, Wavefronts as the waves themselves.",
+    what: "Threads is the brush: particles ride the waves your strokes send out. The three field modes are an earlier iteration that shows the whole field at once. Surface cuts the field at one level and shades it as a solid. Volume treats it as glowing fog. Wavefronts draws the surfaces where the phase is zero, one per wavelength.",
+    see: "Threads reads as drawing; Surface reads as sculpture, Volume as light, Wavefronts as the waves themselves.",
   },
   threshold: {
     label: "Level",
@@ -160,9 +162,46 @@ export const CONTROLS = {
     what: "How finely the field is computed while you work: Draft 64³, Normal 96³, Fine 128³ points. Save image ignores this and always renders at 176³ and twice the screen size.",
     see: "Draft keeps the fan quiet; Fine is smoother and slower to update. The picture you save is the same either way.",
   },
+  flow: {
+    label: "Flow",
+    what: "How fast a thread travels along the wave, in wavelengths per second. In the dark fringes it slows down, which is what bunches the threads into the bright ones.",
+    see: "Faster threads make longer, straighter strands; slower ones stay close and knot.",
+    hint: "1 to 2.",
+  },
+  coupling: {
+    label: "Coupling",
+    what: "Kuramoto coupling K: how strongly each spin pulls toward the spins around it and toward the phase of the wave.",
+    see: "High and the threads lock into one colour and one braid. Zero and each keeps its own rhythm.",
+    paper: "θ̇ = ω + K Σ sin(θⱼ − θ)",
+  },
+  spawn: {
+    label: "Spawn",
+    what: "How many threads are born per frame along the pen, and (slowly) along the finished strokes while growing.",
+    see: "More is denser and slower; fewer is airier.",
+  },
+  life: {
+    label: "Lifetime",
+    what: "Seconds a thread lives before it fades and is reborn elsewhere.",
+    see: "Long lives let strands wander far from the line.",
+  },
+  trail: {
+    label: "Ink",
+    what: "Opacity of each mark. The picture is the sum of thousands, so small values build slowly.",
+    see: "Low is a soft wash, high is wiry.",
+  },
+  spread: {
+    label: "Spread",
+    what: "How far a thread may wander from where it was born before a leash pulls it back.",
+    see: "Small keeps the growth hugging the stroke; large lets it reach out into the fringes.",
+  },
+  grow: {
+    label: "Keep growing",
+    what: "After the pen lifts, new threads keep sprouting along the strokes, so the picture goes on growing by itself.",
+    see: "Off, the picture only grows while you draw.",
+  },
   showStrokes: {
     label: "Show strokes",
-    what: "Draws your slits, and the sources each generation added, as thin lines and rings.",
+    what: "Draws your slits as thin lines.",
     see: "Off leaves only the field.",
   },
   showGrid: {
@@ -181,8 +220,19 @@ export const ACTIONS = {
   undo: { label: "Undo", hint: "Remove the last stroke (⌘Z)" },
   clear: { label: "Clear", hint: "Remove every stroke" },
   reset: { label: "Reset", hint: "Back to the double slit and default settings" },
-  capture: { label: "Save image", hint: "Download the view as a PNG" },
+  capture: { label: "Export", hint: "Save a PNG of this view" },
+  record: {
+    start: "Record video",
+    stop: "Stop recording",
+    on: "Recording…",
+    note: "Records the view as you draw, at screen size. MP4 where the browser can write it (Safari, Chrome), otherwise WebM.",
+    unsupported: "This browser cannot record video.",
+  },
+  clean: { on: "Clean view", off: "Show controls" },
+  clearTrails: { label: "Clear threads", hint: "Wipe the threads, keep the strokes" },
+  grow: { label: "Keep growing", hint: "Keep sprouting threads along the strokes after the pen lifts" },
 };
 
-export const FOOTER_HINT = "Drag to draw a slit · right-drag or shift-drag to orbit · scroll to zoom";
+export const FOOTER_HINT = "Drag to draw · right-drag or shift-drag to orbit · scroll to zoom";
+export const ORBIT_NOTE = "Orbiting wipes the threads; they regrow from the strokes";
 export const BAKING = "Computing the field…";

@@ -7,7 +7,23 @@ Live: https://madebyrayz.github.io/s61/interference-sculptor/
 
 ## The idea
 
-Young's double slit, in 3D. Each stroke you draw is cut into a row of pinholes. Each
+Young's double slit, in 3D, drawn with a brush of spinning particles.
+
+### Threads (the brush, iteration 2)
+
+Each stroke is a slit; its waves fill the space around it (the sum below). Tiny particles
+("threads") are born at the pen tip and ride that wave: they follow the phase gradient of ψ,
+as in de Broglie–Bohm, gliding over the wavefront shells and slowing in the dark fringes,
+which bunches them into the bright ones. Each carries a spin θ, a Kuramoto oscillator,
+θ̇ = ω + K Σ sin(θⱼ − θ), coupled to the spins in its cell and to the local phase of ψ;
+neighbours fall into step and their paths braid. Colour is θ through the palette. Every
+frame each thread adds one short mark to a canvas that is never cleared, so the drawing
+grows while you draw and keeps growing after you stop. Sprout / Drift / Weave along the
+bottom are three settings of the same rule; the Threads flyout has the sliders.
+
+### The field (iteration 1: Surface, Volume, Wavefronts)
+
+ Each stroke you draw is cut into a row of pinholes. Each
 pinhole sends out a spherical wave, ψ = a·e^{i(kr+φ)}/r. The GPU adds up every wave at
 every point of space (a 3D texture, 112³ to 176³ voxels, stretched so it reaches out
 in every direction: fine near the strokes, coarser far away) and stores:
@@ -38,8 +54,8 @@ Colour is a second reading of the same field through a cosine palette
 - Which-path marker: tag every stroke as if a detector knew which slit each photon came
   through. Waves from different strokes stop interfering (Σ|ψ|² instead of |Σψ|²). Switch it
   off and the fringes come back: a quantum eraser.
-- Generations: Huygens' principle applied to its own output. The brightest points of the
-  field become new sources, and the sum runs again. Same move as week 1's subdivision.
+- Threads sprout along the pen while it moves, then slowly along every stroke (pause with
+  the button in the dock). Orbiting wipes the picture; it regrows from the strokes.
 
 ## How mathematical shaders do this
 
@@ -68,7 +84,8 @@ Notes from the research behind the renderer, for the write-up.
 ## Files
 
 ```
-src/sim/field.ts     strokes → sources, the CPU copy of the sum, the Huygens recursion
+src/sim/field.ts     strokes → sources, the CPU copy of the sum
+src/sim/threads.ts   the brush: spin particles on the wave, Kuramoto coupling, the trails
 src/sim/shaders.ts   GLSL: bake (one layer per draw) and raymarch (surface / volume / wavefronts)
 src/sim/engine.ts    WebGL2, 3D textures, camera, the pen, the stroke overlay
 src/params.ts        parameters, palettes, presets
@@ -84,5 +101,7 @@ pnpm dev        # http://localhost:5181
 pnpm run deploy # builds into ../docs/interference-sculptor for GitHub Pages
 ```
 
-Keys: ⌘Z undo. Drag to draw, right-drag or shift-drag to orbit, scroll to zoom. `?still` in
-the URL turns auto-rotate off.
+Keys: ⌘Z undo, D draw, O orbit, H clean view (esc leaves it). Drag to draw, right-drag or
+shift-drag to orbit, scroll to zoom. Export (camera button): a PNG at full quality, or a
+video recording of the view (MP4 where the browser can write it, otherwise WebM).
+`?still` in the URL turns auto-rotate off.

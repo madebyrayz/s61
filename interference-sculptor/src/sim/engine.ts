@@ -4,14 +4,14 @@ import {
   SOFTEN,
   byGroup,
   fieldScale,
-  grow,
   strokeLength,
   strokeSources,
   type Source,
   type Stroke,
   type Vec3,
 } from "./field";
-import { PALETTES, type ViewParams } from "@/params";
+import { Threads } from "./threads";
+import { PALETTES, paletteFn, type ViewParams } from "@/params";
 
 /** Grid size while a stroke is still being drawn: coarse, so it keeps up with the hand. */
 const LIVE_N = 40;
@@ -25,15 +25,14 @@ export interface FieldSpec {
   whichPath: boolean;
   /** Gap between pinholes on a stroke, in wavelengths. */
   spacing: number;
-  generations: number;
   quality: number;
 }
 
 export interface EngineEvents {
   /** A finished stroke, ready to join the drawing. */
   onStroke: (s: Stroke) => void;
-  /** Source count after each generation, for the ladder. */
-  onCounts: (counts: number[]) => void;
+  /** How many threads are alive, now and then. */
+  onThreads: (n: number) => void;
   /** True while a bake is still filling in. */
   onBaking: (b: boolean) => void;
 }
@@ -81,7 +80,7 @@ const norm = (a: Vec3): Vec3 => {
   return [a[0] / l, a[1] / l, a[2] / l];
 };
 /** How far from the centre a stroke may land. The field has no edge, but the grid is finest near the middle. */
-const clampReach = (v: number) => Math.max(-2.5, Math.min(2.5, v));
+const clampReach = (v: number) => Math.max(-4, Math.min(4, v));
 
 /**
  * Owns the WebGL2 context, the camera and the pen. React tells it what to show
@@ -103,6 +102,20 @@ export class Engine {
   private raf = 0;
   private dirty = true;
   private frame = 0;
+  /** The field volume is only baked for the field modes, and only once they are shown. */
+  private baked = false;
+
+  /* the brush */
+  private threads = new Threads();
+  private trailCtx: CanvasRenderingContext2D;
+  private lastStep = 0;
+  private penPrev: Vec3 | null = null;
+  private strokePoints: Vec3[] = [];
+  private camKey = "";
+  private threadTick = 0;
+
+  /* recording */
+  private rec: { recorder: MediaRecorder; out: HTMLCanvasElement; ctx: CanvasRenderingContext2D; chunks: Blob[]; mime: string } | null = null;
 
   /* camera */
   yaw = 0.75;
@@ -112,7 +125,7 @@ export class Engine {
 
   /* state from React */
   private view!: ViewParams;
-  private spec: FieldSpec = { strokes: [], whichPath: false, spacing: 0.42, generations: 0, quality: 128 };
+  private spec: FieldSpec = { strokes: [], whichPath: false, spacing: 0.42, quality: 64 };
   private sources: Source[] = [];
   /** Shortest wavelength in the drawing; the renderer fades out detail the grid cannot hold. */
   private lambda = 0.16;
@@ -125,13 +138,16 @@ export class Engine {
   private lastInteract = 0;
 
   private canvas: HTMLCanvasElement;
+  private trails: HTMLCanvasElement;
   private overlay: HTMLCanvasElement;
   private events: EngineEvents;
 
-  constructor(canvas: HTMLCanvasElement, overlay: HTMLCanvasElement, events: EngineEvents) {
+  constructor(canvas: HTMLCanvasElement, trails: HTMLCanvasElement, overlay: HTMLCanvasElement, events: EngineEvents) {
     this.canvas = canvas;
+    this.trails = trails;
     this.overlay = overlay;
     this.events = events;
+    this.trailCtx = trails.getContext("2d")!;
     const gl = canvas.getContext("webgl2", { antialias: false, alpha: false, preserveDrawingBuffer: false });
     if (!gl) throw new Error("WebGL2 is not available in this browser.");
     this.gl = gl;
@@ -154,6 +170,8 @@ export class Engine {
 
   dispose() {
     cancelAnimationFrame(this.raf);
+    this.rec?.recorder.stop();
+    this.rec = null;
     this.unbind?.();
   }
 
@@ -162,20 +180,95 @@ export class Engine {
   /* ------------------------------------------------------------------ */
 
   setView(v: ViewParams) {
+    const wasField = this.view && this.view.render !== "threads";
+    const changedGround = this.view && (this.view.background !== v.background || this.view.palette !== v.palette);
     this.view = v;
     this.dirty = true;
+    if (changedGround) this.clearTrails();
+    // Entering a field mode for the first time since the strokes changed: bake now.
+    if (v.render !== "threads" && !wasField && !this.baked) this.startBake(this.sources, this.spec.quality, false);
   }
 
   setField(spec: FieldSpec) {
+    const fewer = spec.strokes.length < this.spec.strokes.length || (spec.strokes.length && this.spec.strokes[0] !== spec.strokes[0]);
     this.spec = spec;
-    const base = strokeSources(spec.strokes, spec.whichPath, spec.spacing);
-    const all = grow(base, spec.generations);
-    const counts = [base.length];
-    for (let g = 1; g <= spec.generations; g++) counts.push(all.filter((s) => s.gen <= g).length);
-    this.events.onCounts(counts);
-    this.sources = all;
+    this.sources = strokeSources(spec.strokes, spec.whichPath, spec.spacing);
+    this.strokePoints = spec.strokes.flatMap((s) => s.points);
     this.lambda = spec.strokes.length ? Math.min(...spec.strokes.map((s) => s.lambda)) : 0.16;
-    this.startBake(all, spec.quality, false);
+    this.threads.setSources(this.sources, this.lambda);
+    if (fewer) this.clearTrails(true);
+    this.baked = false;
+    if (this.view?.render !== "threads") this.startBake(this.sources, spec.quality, false);
+    else if (!this.sources.length) this.startBake([], spec.quality, false);
+  }
+
+  /** The MIME type a recording will use: MP4 where the browser can write it, else WebM. */
+  static recordingType(): { mime: string; ext: string } | null {
+    if (typeof MediaRecorder === "undefined") return null;
+    for (const [mime, ext] of [
+      ["video/mp4;codecs=avc1", "mp4"],
+      ["video/mp4", "mp4"],
+      ["video/webm;codecs=vp9", "webm"],
+      ["video/webm", "webm"],
+    ] as const) {
+      if (MediaRecorder.isTypeSupported(mime)) return { mime, ext };
+    }
+    return null;
+  }
+
+  get recording() {
+    return !!this.rec;
+  }
+
+  /** Start recording the view (field, threads and pen overlay together) at screen size. */
+  startRecording(type = Engine.recordingType()) {
+    if (this.rec) return;
+    if (!type) throw new Error("This browser cannot record video.");
+    const out = document.createElement("canvas");
+    out.width = this.overlay.width;
+    out.height = this.overlay.height;
+    const ctx = out.getContext("2d")!;
+    const stream = out.captureStream(30);
+    const recorder = new MediaRecorder(stream, { mimeType: type.mime, videoBitsPerSecond: 12_000_000 });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    this.rec = { recorder, out, ctx, chunks, mime: type.mime };
+    this.composite();
+    recorder.start(500);
+  }
+
+  /** Stop and hand back the file. */
+  stopRecording(): Promise<Blob | null> {
+    const rec = this.rec;
+    if (!rec) return Promise.resolve(null);
+    this.rec = null;
+    return new Promise((res) => {
+      rec.recorder.onstop = () => res(new Blob(rec.chunks, { type: rec.mime.split(";")[0] }));
+      rec.recorder.stop();
+      rec.out.width = 1;
+    });
+  }
+
+  /** One frame into the recording canvas. The WebGL buffer is read in the same task it was drawn, before the browser swaps it. */
+  private composite() {
+    const rec = this.rec;
+    if (!rec) return;
+    if (rec.out.width !== this.overlay.width || rec.out.height !== this.overlay.height) return; // keep the stream's size fixed
+    rec.ctx.drawImage(this.canvas, 0, 0, rec.out.width, rec.out.height);
+    rec.ctx.drawImage(this.trails, 0, 0);
+    rec.ctx.drawImage(this.overlay, 0, 0);
+  }
+
+  /** Wipe the accumulated threads picture; with `kill`, the threads themselves too. */
+  clearTrails(kill = false) {
+    this.trailCtx.clearRect(0, 0, this.trails.width, this.trails.height);
+    if (kill) {
+      this.threads.clear();
+      this.events.onThreads(0);
+    }
+    this.dirty = true;
   }
 
   /**
@@ -186,6 +279,17 @@ export class Engine {
    */
   async capture(n = CAPTURE_N, scale = 2): Promise<Blob | null> {
     const gl = this.gl;
+    if (this.view.render === "threads") {
+      this.render();
+      const out = document.createElement("canvas");
+      out.width = this.overlay.width;
+      out.height = this.overlay.height;
+      const c = out.getContext("2d")!;
+      c.drawImage(this.canvas, 0, 0, out.width, out.height);
+      c.drawImage(this.trails, 0, 0);
+      c.drawImage(this.overlay, 0, 0);
+      return new Promise((res) => out.toBlob(res, "image/png"));
+    }
     const prevFront = this.front, prevJob = this.job;
     const W = this.canvas.width, H = this.canvas.height;
     let hi: Volume | null = null;
@@ -274,6 +378,7 @@ export class Engine {
     const { count, invScale } = this.upload(src);
     this.job = { vol: live ? this.live : this.backVolume(n), layer: 0, count, invScale, live };
     if (!live) this.events.onBaking(true);
+    this.baked = true;
   }
 
   private stepBake() {
@@ -373,6 +478,9 @@ export class Engine {
       if (e.button !== 0) return;
       const p = this.onPlane(e.clientX, e.clientY);
       this.drawing = { pts: [p], speed: 0, last: performance.now(), samples: 0 };
+      this.penPrev = p;
+      // The brush listens to the line as it is drawn, not only once it is finished.
+      if (this.view?.render === "threads") this.liveSources();
     };
     const move = (e: PointerEvent) => {
       this.lastInteract = performance.now();
@@ -398,7 +506,7 @@ export class Engine {
       d.samples++;
       d.last = now;
       d.pts.push(p);
-      if (now - this.lastLive > 70) {
+      if (this.view?.render !== "threads" && now - this.lastLive > 70) {
         this.lastLive = now;
         this.liveBake();
       }
@@ -454,6 +562,15 @@ export class Engine {
     this.startBake(strokeSources(strokes, this.spec.whichPath, this.spec.spacing), LIVE_N, true);
   }
 
+  /** Sources including the stroke in progress, for the brush. */
+  private liveSources() {
+    const d = this.drawing;
+    if (!d) return;
+    const strokes = [...this.spec.strokes, { points: d.pts, lambda: this.strokeLambda(d) }];
+    const src = strokeSources(strokes, this.spec.whichPath, this.spec.spacing);
+    this.threads.setSources(src, Math.min(this.lambda, this.strokeLambda(d)));
+  }
+
   /* ------------------------------------------------------------------ */
   /* Frame                                                              */
   /* ------------------------------------------------------------------ */
@@ -467,8 +584,39 @@ export class Engine {
       this.yaw += 0.0025;
       this.dirty = true;
     }
-    if (this.dirty) this.render();
+    if (this.view?.render === "threads") this.stepThreads();
+    if (this.dirty || this.rec) this.render();
+    this.composite();
   };
+
+  private stepThreads() {
+    const v = this.view;
+    const now = performance.now();
+    const dt = this.lastStep ? (now - this.lastStep) / 1000 : 1 / 60;
+    this.lastStep = now;
+    // The picture only makes sense from one viewpoint: a moved camera starts it again.
+    const key = `${this.yaw.toFixed(3)}|${this.pitch.toFixed(3)}|${this.dist.toFixed(3)}|${this.trails.width}x${this.trails.height}`;
+    if (key !== this.camKey) {
+      this.camKey = key;
+      this.clearTrails();
+    }
+    let pen: { from: Vec3; to: Vec3 } | null = null;
+    const d = this.drawing;
+    if (d) {
+      const tip = d.pts[d.pts.length - 1];
+      if (this.penPrev && (this.penPrev[0] !== tip[0] || this.penPrev[1] !== tip[1] || this.penPrev[2] !== tip[2])) {
+        pen = { from: this.penPrev, to: tip };
+        if (d.pts.length % 4 === 0) this.liveSources();
+      }
+      this.penPrev = tip;
+    }
+    if (!pen && !this.threads.count && !(v.grow && this.strokePoints.length)) return;
+    const b = this.basis();
+    const paper = v.background === "paper";
+    const dpr = this.overlay.width / Math.max(1, this.overlay.getBoundingClientRect().width);
+    this.threads.step(dt, v, pen, this.strokePoints, this.trailCtx, (p) => this.project(p, b), paletteFn(v.palette), paper, dpr);
+    if (++this.threadTick % 30 === 0) this.events.onThreads(this.threads.count);
+  }
 
   /** True while the hand is on the canvas or just left it: render smaller and with longer steps. */
   private coarse() {
@@ -490,6 +638,8 @@ export class Engine {
     if (this.overlay.width !== ow || this.overlay.height !== oh) {
       this.overlay.width = ow;
       this.overlay.height = oh;
+      this.trails.width = ow;
+      this.trails.height = oh;
       this.dirty = true;
     }
   }
@@ -504,7 +654,7 @@ export class Engine {
     const paper = v.background === "paper";
     const bg: Vec3 = paper ? [0.949, 0.937, 0.91] : [0.039, 0.039, 0.043];
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    if (!this.front) {
+    if (!this.front || v.render === "threads") {
       gl.clearColor(bg[0], bg[1], bg[2], 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
     } else {
@@ -611,8 +761,8 @@ export class Engine {
       c.lineJoin = "round";
       for (const s of strokes) {
         const pts = s.points.map((p) => this.project(p, b));
-        c.strokeStyle = `rgba(${ink},0.85)`;
-        c.lineWidth = 1.4 * dpr;
+        c.strokeStyle = `rgba(${ink},${v.render === "threads" ? 0.28 : 0.85})`;
+        c.lineWidth = (v.render === "threads" ? 0.8 : 1.4) * dpr;
         if (pts.length === 1) {
           c.beginPath();
           c.arc(pts[0].x, pts[0].y, 2.5 * dpr, 0, Math.PI * 2);
@@ -621,17 +771,6 @@ export class Engine {
         }
         c.beginPath();
         pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
-        c.stroke();
-      }
-    }
-    if (v.showStrokes && !this.drawing) {
-      c.strokeStyle = `rgba(${ink},0.6)`;
-      c.lineWidth = dpr;
-      for (const s of this.sources) {
-        if (!s.gen) continue;
-        const p = this.project(s.p, b);
-        c.beginPath();
-        c.arc(p.x, p.y, (1.5 + 2.5 / s.gen) * dpr, 0, Math.PI * 2);
         c.stroke();
       }
     }

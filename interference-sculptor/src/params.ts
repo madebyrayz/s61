@@ -1,13 +1,14 @@
 import type { Stroke, Vec3 } from "@/sim/field";
+import type { ThreadParams } from "@/sim/threads";
 
 export type Tool = "draw" | "orbit";
-export type RenderMode = "volume" | "surface" | "fronts";
+export type RenderMode = "threads" | "surface" | "volume" | "fronts";
 export type ColorBy = "phase" | "fringe" | "height";
 export type PaletteName = "spectral" | "iridescent" | "monet" | "ember" | "glacier" | "ink";
 export type Background = "dark" | "paper";
 
 /** Everything that changes the picture but not the physics, so it never triggers a bake. */
-export interface ViewParams {
+export interface ViewParams extends ThreadParams {
   tool: Tool;
   lambda: number;
   handSetsLambda: boolean;
@@ -28,12 +29,10 @@ export interface ViewParams {
 export interface Params extends ViewParams {
   whichPath: boolean;
   spacing: number;
-  generations: number;
   quality: number;
 }
 
-export const MAX_GENERATIONS = 3;
-/** Preview grids: draft, normal, fine. Save image always uses the capture grid in engine.ts. */
+/** Preview grids for the field modes: draft, normal, fine. Save image always uses the capture grid in engine.ts. */
 export const QUALITIES = [64, 96, 128];
 export const QUALITY_LABELS = ["Draft", "Normal", "Fine"];
 
@@ -42,21 +41,27 @@ export const DEFAULTS: Params = {
   lambda: 0.16,
   handSetsLambda: true,
   depth: 0,
-  render: "surface",
+  render: "threads",
   colorBy: "phase",
-  palette: "spectral",
-  background: "dark",
+  palette: "monet",
+  background: "paper",
   threshold: 0.55,
   density: 0.6,
   exposure: 1,
   reach: 0.08,
-  showStrokes: true,
-  showGrid: true,
+  showStrokes: false,
+  showGrid: false,
   autoRotate: false,
   whichPath: false,
   spacing: 0.42,
-  generations: 0,
   quality: 64,
+  flow: 1.2,
+  coupling: 2.2,
+  spawn: 10,
+  life: 9,
+  trail: 0.07,
+  spread: 0.55,
+  grow: true,
 };
 
 export const prefersReducedMotion = () =>
@@ -74,6 +79,44 @@ export const PALETTES: Record<PaletteName, [Vec3, Vec3, Vec3, Vec3]> = {
   glacier: [[0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [1, 0.7, 0.4], [0.0, 0.15, 0.2]],
   ink: [[0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]],
 };
+
+/** The palette as a function, for the threads. */
+export function paletteFn(name: PaletteName) {
+  const [a, b, c, d] = PALETTES[name];
+  return (t: number): [number, number, number] => [
+    Math.min(1, Math.max(0, a[0] + b[0] * Math.cos(2 * Math.PI * (c[0] * t + d[0])))),
+    Math.min(1, Math.max(0, a[1] + b[1] * Math.cos(2 * Math.PI * (c[1] * t + d[1])))),
+    Math.min(1, Math.max(0, a[2] + b[2] * Math.cos(2 * Math.PI * (c[2] * t + d[2])))),
+  ];
+}
+
+/* ---------------------------------------------------------------------- */
+/* Thread styles: how the brush grows, as a switch along the bottom       */
+/* ---------------------------------------------------------------------- */
+
+export interface ThreadStyle {
+  name: string;
+  note: string;
+  values: Pick<ThreadParams, "flow" | "coupling" | "spawn" | "life" | "trail" | "spread">;
+}
+
+export const THREAD_STYLES: ThreadStyle[] = [
+  {
+    name: "Sprout",
+    note: "Short threads that hug the pen: the line thickens into a fur of fringes.",
+    values: { flow: 0.9, coupling: 1, spawn: 12, life: 6, trail: 0.08, spread: 0.3 },
+  },
+  {
+    name: "Drift",
+    note: "Long, loose threads that ride the waves far out from the strokes.",
+    values: { flow: 1.6, coupling: 0.5, spawn: 7, life: 12, trail: 0.05, spread: 0.9 },
+  },
+  {
+    name: "Weave",
+    note: "Strongly coupled spins: the threads lock into one rhythm and braid into bundles.",
+    values: { flow: 1.2, coupling: 2.2, spawn: 10, life: 9, trail: 0.07, spread: 0.55 },
+  },
+];
 
 /* ---------------------------------------------------------------------- */
 /* Presets: strokes plus the view that shows them best                    */
@@ -104,48 +147,39 @@ export interface Preset {
 
 export const PRESETS: Preset[] = [
   {
+    name: "Blank",
+    note: "Empty paper. Draw, and the threads grow from your line.",
+    strokes: [],
+    values: { render: "threads", background: "paper", palette: "monet" },
+  },
+  {
     name: "Double slit",
-    note: "Young's experiment: two short parallel slits. The bright fringes are hyperbolic sheets fanning out from between them.",
+    note: "Young's experiment: two short parallel slits. The threads bundle into the bright fringes between them.",
     strokes: [
       { points: line([-0.14, -0.3, -0.55], [-0.14, 0.3, -0.55]), lambda: 0.16 },
       { points: line([0.14, -0.3, -0.55], [0.14, 0.3, -0.55]), lambda: 0.16 },
     ],
-    values: { render: "surface", threshold: 0.55, colorBy: "phase", palette: "iridescent" },
+    values: { render: "threads", background: "paper", palette: "monet" },
   },
   {
     name: "Two pinholes",
-    note: "Two points. Each fringe is a hyperboloid of revolution around the line joining them, nested like shells.",
+    note: "Two points, as a solid: each fringe is a hyperboloid of revolution around the line joining them, nested like shells.",
     strokes: [
       { points: [[-0.22, 0, 0]], lambda: 0.14 },
       { points: [[0.22, 0, 0]], lambda: 0.14 },
     ],
-    values: { render: "surface", threshold: 0.7, colorBy: "phase", palette: "iridescent" },
+    values: { render: "surface", threshold: 0.7, colorBy: "phase", palette: "iridescent", background: "dark" },
   },
   {
     name: "Ring",
-    note: "A circular slit. Every point on its axis is the same distance from the whole ring, so the waves add there into a bright needle of light.",
+    note: "A circular slit, as glowing volume. Every point on its axis is the same distance from the whole ring, so the waves add there into a bright needle of light.",
     strokes: [{ points: circle(0.32, 0), lambda: 0.15 }],
-    values: { render: "volume", threshold: 0.5, density: 0.25, colorBy: "phase", palette: "monet" },
-  },
-  {
-    name: "Grating",
-    note: "Five parallel slits. More slits make the bright orders narrower and sharper, which is how a spectrometer works.",
-    strokes: [-0.24, -0.12, 0, 0.12, 0.24].map((x) => ({
-      points: line([x, -0.35, -0.6], [x, 0.35, -0.6]),
-      lambda: 0.15,
-    })),
-    values: { render: "surface", threshold: 0.5, colorBy: "phase", palette: "glacier" },
+    values: { render: "volume", threshold: 0.5, density: 0.25, colorBy: "phase", palette: "monet", background: "dark" },
   },
   {
     name: "Helix",
-    note: "A slit wound into a spiral. The pattern twists with it.",
+    note: "A slit wound into a spiral, as wavefronts. The pattern twists with it.",
     strokes: [{ points: helix(0.3, 2, 0.9), lambda: 0.17 }],
-    values: { render: "fronts", threshold: 0.4, density: 0.6, colorBy: "phase", palette: "ember" },
-  },
-  {
-    name: "Pinhole",
-    note: "A single point: spherical wavefronts, one wavelength apart. Nothing to interfere with, until you draw a second.",
-    strokes: [{ points: [[0, 0, 0]], lambda: 0.18 }],
-    values: { render: "fronts", threshold: 0.2, density: 0.5, colorBy: "height", palette: "ink" },
+    values: { render: "fronts", threshold: 0.4, density: 0.6, colorBy: "phase", palette: "ember", background: "dark" },
   },
 ];
