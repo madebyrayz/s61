@@ -1,5 +1,6 @@
 import type { Stroke, Vec3 } from "@/sim/field";
-import type { ThreadParams } from "@/sim/threads";
+import type { Mark, ThreadParams } from "@/sim/threads";
+export type { Mark };
 
 export type Tool = "draw" | "orbit";
 export type RenderMode = "threads" | "surface" | "volume" | "fronts";
@@ -44,7 +45,7 @@ export const DEFAULTS: Params = {
   render: "threads",
   colorBy: "phase",
   palette: "monet",
-  background: "paper",
+  background: "dark",
   threshold: 0.55,
   density: 0.6,
   exposure: 1,
@@ -54,7 +55,7 @@ export const DEFAULTS: Params = {
   autoRotate: false,
   whichPath: false,
   spacing: 0.42,
-  quality: 64,
+  quality: 96,
   flow: 1.2,
   coupling: 2.2,
   spawn: 6,
@@ -62,6 +63,8 @@ export const DEFAULTS: Params = {
   trail: 0.07,
   spread: 0.55,
   grow: true,
+  wander: 0.35,
+  mark: "dots",
 };
 
 export const prefersReducedMotion = () =>
@@ -97,24 +100,24 @@ export function paletteFn(name: PaletteName) {
 export interface ThreadStyle {
   name: string;
   note: string;
-  values: Pick<ThreadParams, "flow" | "coupling" | "spawn" | "life" | "trail" | "spread">;
+  values: Pick<ThreadParams, "flow" | "coupling" | "spawn" | "life" | "trail" | "spread" | "wander">;
 }
 
 export const THREAD_STYLES: ThreadStyle[] = [
   {
     name: "Sprout",
     note: "Short threads that hug the pen: the line thickens into a fur of fringes.",
-    values: { flow: 0.9, coupling: 1, spawn: 8, life: 6, trail: 0.08, spread: 0.3 },
+    values: { flow: 0.9, coupling: 1, spawn: 8, life: 6, trail: 0.08, spread: 0.3, wander: 0.5 },
   },
   {
     name: "Drift",
     note: "Long, loose threads that ride the waves far out from the strokes.",
-    values: { flow: 1.6, coupling: 0.5, spawn: 4, life: 12, trail: 0.05, spread: 0.9 },
+    values: { flow: 1.6, coupling: 0.5, spawn: 4, life: 12, trail: 0.05, spread: 0.9, wander: 0.7 },
   },
   {
     name: "Weave",
     note: "Strongly coupled spins: the threads lock into one rhythm and braid into bundles.",
-    values: { flow: 1.2, coupling: 2.2, spawn: 6, life: 9, trail: 0.07, spread: 0.55 },
+    values: { flow: 1.2, coupling: 2.2, spawn: 6, life: 9, trail: 0.07, spread: 0.55, wander: 0.35 },
   },
 ];
 
@@ -148,9 +151,9 @@ export interface Preset {
 export const PRESETS: Preset[] = [
   {
     name: "Blank",
-    note: "Empty paper. Draw, and the threads grow from your line.",
+    note: "Empty space. Draw, and the threads grow from your line.",
     strokes: [],
-    values: { render: "threads", background: "paper", palette: "monet" },
+    values: { render: "threads", background: "dark", palette: "monet" },
   },
   {
     name: "Double slit",
@@ -159,7 +162,7 @@ export const PRESETS: Preset[] = [
       { points: line([-0.14, -0.3, -0.55], [-0.14, 0.3, -0.55]), lambda: 0.16 },
       { points: line([0.14, -0.3, -0.55], [0.14, 0.3, -0.55]), lambda: 0.16 },
     ],
-    values: { render: "threads", background: "paper", palette: "monet" },
+    values: { render: "threads", background: "dark", palette: "monet" },
   },
   {
     name: "Two pinholes",
@@ -168,7 +171,7 @@ export const PRESETS: Preset[] = [
       { points: [[-0.22, 0, 0]], lambda: 0.14 },
       { points: [[0.22, 0, 0]], lambda: 0.14 },
     ],
-    values: { render: "surface", threshold: 0.7, colorBy: "phase", palette: "iridescent", background: "dark" },
+    values: { render: "surface", threshold: 0.55, colorBy: "phase", palette: "iridescent", background: "dark" },
   },
   {
     name: "Ring",

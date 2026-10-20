@@ -100,7 +100,8 @@ const float WARP = ${WARP.toFixed(3)};
 const float FADE_START = ${FADE_START.toFixed(3)};
 const float FADE_END = ${FADE_END.toFixed(3)};
 vec3 pal(float t) { return uPa + uPb * cos(TAU * (uPc * t + uPd)); }
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uFrame * 0.618) * 43758.5453); }
+/* Per-pixel start offset for the march. Fixed per pixel (not per frame), so a re-render never shimmers. */
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 
 /* World ↔ texture. jac is du/dp per axis: how many texture units one world unit spans there. */
 vec3 toU(vec3 p) { vec3 q = p / WARP; return q / sqrt(1.0 + q * q); }

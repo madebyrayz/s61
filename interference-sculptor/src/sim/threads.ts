@@ -31,7 +31,13 @@ export interface ThreadParams {
   spread: number;
   /** Keep spawning slowly along the strokes after the pen lifts. */
   grow: boolean;
+  /** How much chance is mixed into each step: 0 is deterministic, 1 is a random walk. */
+  wander: number;
+  /** What a thread leaves behind each step. */
+  mark: Mark;
 }
+
+export type Mark = "dots" | "dashes" | "line";
 
 const MAX = 3000;
 /** Colour bins for batching: every segment of one bin is stroked in one draw call. */
@@ -42,6 +48,21 @@ const MAX_SEG = 400_000;
 /** Sources a thread listens to: the nearest few to its birthplace. */
 const K = 12;
 const CELL = 0.1;
+
+type Pt = { x: number; y: number; z: number };
+
+/** One step's mark into its colour path: a dot at the end, a dash on every third step, or the segment. */
+function addMark(paths: (Path2D | null)[], slot: number, a: Pt, b: Pt, mark: Mark, n: number, dpr: number) {
+  if (mark === "dashes" && n % 3 !== 0) return;
+  const path = paths[slot] ?? (paths[slot] = new Path2D());
+  if (mark === "dots") {
+    const r = 0.55 * dpr;
+    path.rect(b.x - r, b.y - r, r * 2, r * 2);
+    return;
+  }
+  path.moveTo(a.x, a.y);
+  path.lineTo(b.x, b.y);
+}
 
 interface Projector {
   (p: Vec3): { x: number; y: number; z: number };
@@ -56,6 +77,8 @@ export class Threads {
   private theta = new Float32Array(MAX);
   private omega = new Float32Array(MAX);
   private age = new Float32Array(MAX);
+  /** Each thread's own pace, 0.6–1.4, so a bundle is not a lock-step march. */
+  private pace = new Float32Array(MAX);
   private life = new Float32Array(MAX);
   private near = new Int16Array(MAX * K);
   private next = 0;
@@ -108,6 +131,7 @@ export class Threads {
       this.head.set([d[0] / L, d[1] / L, d[2] / L], i * 3);
       this.theta[i] = Math.random() * Math.PI * 2;
       this.omega[i] = (Math.random() - 0.5) * 0.8;
+      this.pace[i] = 0.6 + Math.random() * 0.8;
       this.age[i] = 0;
       this.life[i] = life * (0.6 + Math.random() * 0.8);
       this.pickNear(i);
@@ -196,7 +220,7 @@ export class Threads {
         const last = --this.count;
         if (last !== i) {
           for (const a of [this.pos, this.prev, this.home, this.head]) a.copyWithin(i * 3, last * 3, last * 3 + 3);
-          this.theta[i] = this.theta[last]; this.omega[i] = this.omega[last]; this.age[i] = this.age[last]; this.life[i] = this.life[last];
+          this.theta[i] = this.theta[last]; this.omega[i] = this.omega[last]; this.age[i] = this.age[last]; this.life[i] = this.life[last]; this.pace[i] = this.pace[last];
           this.near.copyWithin(i * K, last * K, last * K + K);
           i--;
         }
@@ -245,13 +269,18 @@ export class Threads {
         const pull = (bd - prm.spread) / prm.spread;
         hx += (bx / bd) * pull; hy += (by / bd) * pull; hz += (bz / bd) * pull;
       }
+      // Chance: a nudge in a random direction each step, as much as `wander` allows.
+      if (prm.wander > 0) {
+        const wj = prm.wander * 0.9;
+        hx += (Math.random() - 0.5) * wj; hy += (Math.random() - 0.5) * wj; hz += (Math.random() - 0.5) * wj;
+      }
       const hl = Math.hypot(hx, hy, hz) || 1;
       hx /= hl; hy /= hl; hz /= hl;
       this.head[o] = hx; this.head[o + 1] = hy; this.head[o + 2] = hz;
 
       // Slower in the dark fringes: |ψ| gates the speed, which is what bunches the threads.
       const amp = Math.hypot(re, im);
-      const speed = prm.flow * λ * (0.25 + 0.75 * Math.min(1, amp * 0.6));
+      const speed = prm.flow * λ * (0.25 + 0.75 * Math.min(1, amp * 0.6)) * (1 + (this.pace[i] - 1) * prm.wander);
       this.prev[o] = x; this.prev[o + 1] = y; this.prev[o + 2] = z;
       this.pos[o] = x + hx * speed * dt;
       this.pos[o + 1] = y + hy * speed * dt;
@@ -265,31 +294,37 @@ export class Threads {
       const bin = Math.min(BINS - 1, Math.floor(((θ / (Math.PI * 2) + 0.5) % 1 + 1) % 1 * BINS));
       const f = Math.min(FADES - 1, Math.floor(fade * FADES));
       const slot = bin * FADES + f;
-      const path = paths[slot] ?? (paths[slot] = new Path2D());
-      path.moveTo(a.x, a.y);
-      path.lineTo(b.x, b.y);
-      // Remember it in 3D.
       const h = this.segHead;
+      addMark(paths, slot, a, b, prm.mark, h, dpr);
+      // Remember it in 3D.
       this.segs.set([this.prev[o], this.prev[o + 1], this.prev[o + 2], this.pos[o], this.pos[o + 1], this.pos[o + 2]], h * 6);
       this.segSlot[h] = slot;
       this.segHead = (h + 1) % MAX_SEG;
       if (this.segN < MAX_SEG) this.segN++;
     }
     this.cells = nextCells;
-    this.strokePaths(ctx, paths, alpha, palette, paper, dpr);
+    this.strokePaths(ctx, paths, alpha, palette, paper, dpr, prm.mark);
   }
 
-  private strokePaths(ctx: CanvasRenderingContext2D, paths: (Path2D | null)[], alpha: number, palette: (t: number) => [number, number, number], paper: boolean, dpr: number) {
+  private strokePaths(ctx: CanvasRenderingContext2D, paths: (Path2D | null)[], alpha: number, palette: (t: number) => [number, number, number], paper: boolean, dpr: number, mark: Mark) {
     ctx.lineCap = "round";
     ctx.lineWidth = 0.7 * dpr;
     const k = paper ? 0.55 : 1.0;
+    // Dots are small, so they carry more ink each than a line would.
+    const a = mark === "dots" ? Math.min(1, alpha * 2.2) : alpha;
     for (let slot = 0; slot < paths.length; slot++) {
       const path = paths[slot];
       if (!path) continue;
       const bin = Math.floor(slot / FADES), f = slot % FADES;
       const col = palette((bin + 0.5) / BINS);
-      ctx.strokeStyle = `rgba(${(col[0] * 255 * k) | 0},${(col[1] * 255 * k) | 0},${(col[2] * 255 * k) | 0},${alpha * ((f + 0.5) / FADES)})`;
-      ctx.stroke(path);
+      const css = `rgba(${(col[0] * 255 * k) | 0},${(col[1] * 255 * k) | 0},${(col[2] * 255 * k) | 0},${a * ((f + 0.5) / FADES)})`;
+      if (mark === "dots") {
+        ctx.fillStyle = css;
+        ctx.fill(path);
+      } else {
+        ctx.strokeStyle = css;
+        ctx.stroke(path);
+      }
     }
   }
 
@@ -305,6 +340,7 @@ export class Threads {
     palette: (t: number) => [number, number, number],
     paper: boolean,
     dpr: number,
+    mark: Mark,
     stride = 1,
   ) {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -317,12 +353,9 @@ export class Threads {
       const a = project([segs[o], segs[o + 1], segs[o + 2]]);
       const b = project([segs[o + 3], segs[o + 4], segs[o + 5]]);
       if (a.z <= 0.05 || b.z <= 0.05) continue;
-      const slot = this.segSlot[i];
-      const path = paths[slot] ?? (paths[slot] = new Path2D());
-      path.moveTo(a.x, a.y);
-      path.lineTo(b.x, b.y);
+      addMark(paths, this.segSlot[i], a, b, mark, i, dpr);
     }
     // Thinned replays get proportionally heavier ink, so the picture keeps its weight.
-    this.strokePaths(ctx, paths, Math.min(1, alpha * Math.sqrt(stride)), palette, paper, dpr);
+    this.strokePaths(ctx, paths, Math.min(1, alpha * Math.sqrt(stride)), palette, paper, dpr, mark);
   }
 }

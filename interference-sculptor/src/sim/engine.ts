@@ -125,6 +125,8 @@ export class Engine {
   yaw = 0.75;
   pitch = 0.32;
   dist = 5.6;
+  /** The point the camera looks at; panning moves it. */
+  target: Vec3 = [0, 0, 0];
   private fov = (38 * Math.PI) / 180;
 
   /* state from React */
@@ -137,6 +139,7 @@ export class Engine {
   /* pen */
   private drawing: { pts: Vec3[]; speed: number; last: number; samples: number } | null = null;
   private orbiting: { x: number; y: number } | null = null;
+  private panning: { x: number; y: number } | null = null;
   private hover: Vec3 | null = null;
   private lastLive = 0;
   private lastInteract = 0;
@@ -185,7 +188,7 @@ export class Engine {
 
   setView(v: ViewParams) {
     const wasField = this.view && this.view.render !== "threads";
-    const changedGround = this.view && (this.view.background !== v.background || this.view.palette !== v.palette);
+    const changedGround = this.view && (this.view.background !== v.background || this.view.palette !== v.palette || this.view.mark !== v.mark);
     this.view = v;
     this.dirty = true;
     if (changedGround) this.replayNeeded = true;
@@ -426,11 +429,21 @@ export class Engine {
 
   private basis() {
     const cp = Math.cos(this.pitch);
-    const eye: Vec3 = [this.dist * cp * Math.sin(this.yaw), this.dist * Math.sin(this.pitch), this.dist * cp * Math.cos(this.yaw)];
-    const fwd = norm([-eye[0], -eye[1], -eye[2]]);
+    const off: Vec3 = [this.dist * cp * Math.sin(this.yaw), this.dist * Math.sin(this.pitch), this.dist * cp * Math.cos(this.yaw)];
+    const eye: Vec3 = [this.target[0] + off[0], this.target[1] + off[1], this.target[2] + off[2]];
+    const fwd = norm([-off[0], -off[1], -off[2]]);
     const right = norm(cross(fwd, [0, 1, 0]));
     const up = cross(right, fwd);
     return { eye, fwd, right, up };
+  }
+
+  /** Slide the view sideways and up, in fractions of the visible height (WASD, or shift + right-drag). */
+  pan(dx: number, dy: number) {
+    const { right, up } = this.basis();
+    const h = 2 * this.dist * Math.tan(this.fov / 2);
+    for (let k = 0; k < 3; k++) this.target[k] = clampReach(this.target[k] + (right[k] * dx + up[k] * dy) * h);
+    this.lastInteract = performance.now();
+    this.dirty = true;
   }
 
   private aspect() {
@@ -450,7 +463,7 @@ export class Engine {
       fwd[2] + x * t * this.aspect() * right[2] + y * t * up[2],
     ]);
     const d = this.view?.depth ?? 0;
-    const p0: Vec3 = [fwd[0] * d, fwd[1] * d, fwd[2] * d];
+    const p0: Vec3 = [this.target[0] + fwd[0] * d, this.target[1] + fwd[1] * d, this.target[2] + fwd[2] * d];
     const s = dot(sub(p0, eye), fwd) / dot(rd, fwd);
     return [clampReach(eye[0] + rd[0] * s), clampReach(eye[1] + rd[1] * s), clampReach(eye[2] + rd[2] * s)];
   }
@@ -476,7 +489,13 @@ export class Engine {
     const down = (e: PointerEvent) => {
       c.setPointerCapture(e.pointerId);
       this.lastInteract = performance.now();
-      const orbit = e.button === 2 || e.button === 1 || e.shiftKey || this.view?.tool === "orbit";
+      const secondary = e.button === 2 || e.button === 1;
+      // Shift with the right (or middle) button pans; any one of them alone orbits.
+      if (secondary && e.shiftKey) {
+        this.panning = { x: e.clientX, y: e.clientY };
+        return;
+      }
+      const orbit = secondary || e.shiftKey || this.view?.tool === "orbit";
       if (orbit) {
         this.orbiting = { x: e.clientX, y: e.clientY };
         return;
@@ -489,8 +508,14 @@ export class Engine {
       if (this.view?.render === "threads") this.liveSources();
     };
     const move = (e: PointerEvent) => {
-      this.lastInteract = performance.now();
+      if (this.panning) {
+        const r = c.getBoundingClientRect();
+        this.pan(-(e.clientX - this.panning.x) / r.height, (e.clientY - this.panning.y) / r.height);
+        this.panning = { x: e.clientX, y: e.clientY };
+        return;
+      }
       if (this.orbiting) {
+        this.lastInteract = performance.now();
         const dx = e.clientX - this.orbiting.x, dy = e.clientY - this.orbiting.y;
         this.orbiting = { x: e.clientX, y: e.clientY };
         this.yaw -= dx * 0.008;
@@ -520,6 +545,7 @@ export class Engine {
     const up = (e: PointerEvent) => {
       if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId);
       this.orbiting = null;
+      this.panning = null;
       const d = this.drawing;
       this.drawing = null;
       if (!d) return;
@@ -603,7 +629,7 @@ export class Engine {
     const dt = this.lastStep ? Math.min((now - this.lastStep) / 1000, 0.1) : 1 / 30;
     this.lastStep = now;
     // The picture only makes sense from one viewpoint: a moved camera starts it again.
-    const key = `${this.yaw.toFixed(3)}|${this.pitch.toFixed(3)}|${this.dist.toFixed(3)}|${this.trails.width}x${this.trails.height}`;
+    const key = `${this.yaw.toFixed(3)}|${this.pitch.toFixed(3)}|${this.dist.toFixed(3)}|${this.target.map((t) => t.toFixed(3)).join(",")}|${this.trails.width}x${this.trails.height}`;
     if (key !== this.camKey) {
       this.camKey = key;
       this.replayNeeded = true;
@@ -625,7 +651,7 @@ export class Engine {
     // while the hand is still moving, in full once it stops) instead of wiping it.
     if (this.replayNeeded || (this.replayThin && !this.coarse())) {
       const thin = this.coarse() && this.replayNeeded;
-      this.threads.replay(this.trailCtx, (p) => this.project(p, b), v.trail, paletteFn(v.palette), paper, dpr, thin ? 4 : 1);
+      this.threads.replay(this.trailCtx, (p) => this.project(p, b), v.trail, paletteFn(v.palette), paper, dpr, v.mark, thin ? 4 : 1);
       this.replayThin = thin;
       this.replayNeeded = false;
     }
@@ -636,7 +662,7 @@ export class Engine {
 
   /** True while the hand is on the canvas or just left it: render smaller and with longer steps. */
   private coarse() {
-    return !!this.drawing || !!this.orbiting || performance.now() - this.lastInteract < 220;
+    return !!this.drawing || !!this.orbiting || !!this.panning || performance.now() - this.lastInteract < 220;
   }
 
   private resize() {
@@ -700,7 +726,7 @@ export class Engine {
       gl.uniform1f(loc.uPaper, paper ? 1 : 0);
       gl.uniform3fv(loc.uBg, bg);
       gl.uniform1f(loc.uFrame, this.frame % 64);
-      gl.uniform1f(loc.uStepMul, this.coarse() ? 1.8 : 1);
+      gl.uniform1f(loc.uStepMul, this.coarse() ? 1.4 : 1);
       gl.uniform1f(loc.uLambda, this.lambda);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }

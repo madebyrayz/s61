@@ -76,9 +76,11 @@ export default function App() {
       }
       const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable]");
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "d") setParams((prev) => ({ ...prev, tool: "draw" }));
+      if (e.key === "p") setParams((prev) => ({ ...prev, tool: "draw" }));
       if (e.key === "o") setParams((prev) => ({ ...prev, tool: "orbit" }));
       if (e.key === "h") setClean((c) => !c);
+      const pan = { a: [-0.04, 0], d: [0.04, 0], w: [0, 0.04], s: [0, -0.04] }[e.key.toLowerCase()];
+      if (pan) engine.current?.pan(pan[0], pan[1]);
       if (e.key === "Escape") setClean(false);
     };
     window.addEventListener("keydown", key);
@@ -166,6 +168,7 @@ export default function App() {
         }}
         onReset={() => {
           setParams(start());
+          if (engine.current) engine.current.target = [0, 0, 0];
           setStrokes(PRESETS[0].strokes);
           setPresetStrokes(PRESETS[0].strokes);
           engine.current?.clearTrails(true);

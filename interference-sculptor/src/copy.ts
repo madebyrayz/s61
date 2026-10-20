@@ -75,7 +75,7 @@ export const SECTIONS: Record<string, SectionCopy> = {
   },
   view: {
     title: "View",
-    intro: "Drag with the right button (or shift) to orbit, scroll to zoom.",
+    intro: "Right-drag or shift-drag to orbit, shift + right-drag or WASD to pan, scroll to zoom.",
   },
 };
 
@@ -194,6 +194,17 @@ export const CONTROLS = {
     what: "How far a thread may wander from where it was born before a leash pulls it back.",
     see: "Small keeps the growth hugging the stroke; large lets it reach out into the fringes.",
   },
+  wander: {
+    label: "Wander",
+    what: "How much chance is mixed into each step: a random nudge to the heading, and a pace of its own for every thread. At zero the rule runs exactly; at one it is nearly a random walk.",
+    see: "Low is tidy and systematic; high is loose and hand-made.",
+    hint: "0.3 to 0.5.",
+  },
+  mark: {
+    label: "Mark",
+    what: "What a thread leaves behind each step: a dot where it is, a dash every third step, or its whole path as a line.",
+    see: "Dots read like a stippled brush, dashes like a dotted trace, line like a wire.",
+  },
   grow: {
     label: "Keep growing",
     what: "After the pen lifts, new threads keep sprouting along the strokes, so the picture goes on growing by itself.",
@@ -233,6 +244,6 @@ export const ACTIONS = {
   grow: { label: "Keep growing", hint: "Keep sprouting threads along the strokes after the pen lifts" },
 };
 
-export const FOOTER_HINT = "Drag to draw · right-drag or shift-drag to orbit · scroll to zoom";
+export const FOOTER_HINT = "Drag to draw · right-drag to orbit · shift + right-drag or WASD to pan · scroll to zoom";
 export const ORBIT_NOTE = "Orbiting wipes the threads; they regrow from the strokes";
 export const BAKING = "Computing the field…";

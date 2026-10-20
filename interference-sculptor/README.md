@@ -101,7 +101,7 @@ pnpm dev        # http://localhost:5181
 pnpm run deploy # builds into ../docs/interference-sculptor for GitHub Pages
 ```
 
-Keys: ⌘Z undo, D draw, O orbit, H clean view (esc leaves it). Drag to draw, right-drag or
-shift-drag to orbit, scroll to zoom. Export (camera button): a PNG at full quality, or a
+Keys: ⌘Z undo, P pen, O orbit, WASD pan, H clean view (esc leaves it). Drag to draw,
+right-drag or shift-drag to orbit, shift + right-drag to pan, scroll to zoom. Export (camera button): a PNG at full quality, or a
 video recording of the view (MP4 where the browser can write it, otherwise WebM).
 `?still` in the URL turns auto-rotate off.

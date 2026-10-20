@@ -30,6 +30,7 @@ import {
   THREAD_STYLES,
   type Background,
   type ColorBy,
+  type Mark,
   type PaletteName,
   type Params,
   type RenderMode,
@@ -58,6 +59,11 @@ const PALETTE_OPTIONS: { value: PaletteName; label: string }[] = [
   { value: "ember", label: "Ember" },
   { value: "glacier", label: "Glacier" },
   { value: "ink", label: "Ink" },
+];
+const MARK_OPTIONS: { value: Mark; label: string }[] = [
+  { value: "dots", label: "Dots" },
+  { value: "dashes", label: "Dashes" },
+  { value: "line", label: "Line" },
 ];
 const GROUND_OPTIONS: { value: Background; label: string }[] = [
   { value: "dark", label: "Dark" },
@@ -144,7 +150,7 @@ export function CanvasControls({
   onClean,
 }: Props) {
   const slider = (
-    key: "lambda" | "spacing" | "depth" | "threshold" | "reach" | "density" | "exposure" | "flow" | "coupling" | "spawn" | "life" | "trail" | "spread",
+    key: "lambda" | "spacing" | "depth" | "threshold" | "reach" | "density" | "exposure" | "flow" | "coupling" | "spawn" | "life" | "trail" | "spread" | "wander",
     min: number,
     max: number,
     ends?: [string, string],
@@ -248,7 +254,7 @@ export function CanvasControls({
 
       {/* Left: the pen, and edits to what has been drawn. */}
       <Rail label="Pen" className="absolute top-1/2 left-4 -translate-y-1/2">
-        <ToolButton label="Draw" shortcut="D" active={p.tool === "draw"} onClick={() => update("tool", "draw")}>
+        <ToolButton label="Draw" shortcut="P" active={p.tool === "draw"} onClick={() => update("tool", "draw")}>
           <Pencil />
         </ToolButton>
         <ToolButton label="Orbit" shortcut="O" active={p.tool === "orbit"} onClick={() => update("tool", "orbit")}>
@@ -272,6 +278,8 @@ export function CanvasControls({
             {slider("life", 2, 20, ["brief", "long"], (v) => `${v.toFixed(1)} s`)}
             {slider("trail", 0.02, 0.3, ["wash", "wire"], (v) => v.toFixed(2))}
             {slider("spread", 0.1, 1.5, ["close", "far"], (v) => v.toFixed(2))}
+            {slider("wander", 0, 1, ["exact", "chance"], (v) => v.toFixed(2))}
+            <ButtonRow<Mark> id="mark" copy={CONTROLS.mark} value={p.mark} options={MARK_OPTIONS} onChange={(v) => update("mark", v)} />
           </Flyout>
         ) : null}
         <RailDivider />
