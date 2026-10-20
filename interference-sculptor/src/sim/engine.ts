@@ -470,16 +470,26 @@ export class Engine {
     if (this.dirty) this.render();
   };
 
+  /** True while the hand is on the canvas or just left it: render smaller and with longer steps. */
+  private coarse() {
+    return !!this.drawing || !!this.orbiting || performance.now() - this.lastInteract < 220;
+  }
+
   private resize() {
-    // Rendered at 1× regardless of the display: the raymarch costs a full shader per pixel.
-    const dpr = 1;
+    // Rendered at 1× regardless of the display (the raymarch costs a full shader per pixel),
+    // and at half size while the view is moving. The overlay stays sharp.
     const r = this.canvas.getBoundingClientRect();
-    const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    const s = this.coarse() ? 0.5 : 1;
+    const w = Math.max(1, Math.round(r.width * s)), h = Math.max(1, Math.round(r.height * s));
+    const ow = Math.max(1, Math.round(r.width)), oh = Math.max(1, Math.round(r.height));
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w;
       this.canvas.height = h;
-      this.overlay.width = w;
-      this.overlay.height = h;
+      this.dirty = true;
+    }
+    if (this.overlay.width !== ow || this.overlay.height !== oh) {
+      this.overlay.width = ow;
+      this.overlay.height = oh;
       this.dirty = true;
     }
   }
@@ -524,6 +534,7 @@ export class Engine {
       gl.uniform1f(loc.uPaper, paper ? 1 : 0);
       gl.uniform3fv(loc.uBg, bg);
       gl.uniform1f(loc.uFrame, this.frame % 64);
+      gl.uniform1f(loc.uStepMul, this.coarse() ? 1.8 : 1);
       gl.uniform1f(loc.uLambda, this.lambda);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }

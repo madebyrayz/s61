@@ -91,6 +91,7 @@ uniform float uN;         // grid size, for the step length
 uniform float uPaper;     // 1 on the light background
 uniform vec3 uBg;
 uniform float uFrame;
+uniform float uStepMul;   // > 1 while the view is moving: longer steps, fewer samples
 uniform float uLambda;    // shortest wavelength in the drawing, to know when the grid can no longer resolve it
 out vec4 o;
 
@@ -105,13 +106,14 @@ float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uFrame * 0
 vec3 toU(vec3 p) { vec3 q = p / WARP; return q / sqrt(1.0 + q * q); }
 vec3 jac(vec3 p) { vec3 q = p / WARP; vec3 s = 1.0 + q * q; return 1.0 / (WARP * s * sqrt(s)); }
 /* World distance per step along rd, so each step crosses about 0.8 of a voxel wherever it is. */
-float stepAt(vec3 p, vec3 rd) { return (1.6 / uN) / length(jac(p) * rd); }
+float stepAt0(vec3 p, vec3 rd) { return (1.6 / uN) / length(jac(p) * rd); }
 /* 1 where a voxel is small enough to resolve a wavelength, 0 where it is not. */
 float resolved(vec3 p) {
   vec3 j = jac(p);
   float vox = (2.0 / uN) / min(j.x, min(j.y, j.z));
   return 1.0 - smoothstep(0.3 * uLambda, 0.6 * uLambda, vox);
 }
+float stepAt(vec3 p, vec3 rd) { return stepAt0(p, rd) * uStepMul; }
 
 vec4 S(vec3 p) { return texture(uVol, toU(p) * 0.5 + 0.5); }
 float intensity(vec4 s) { return s.r / max(1.0 - s.r, 1e-3); }
@@ -174,7 +176,7 @@ void main() {
     /* Emission–absorption. On the dark ground the field glows; on paper it is ink. */
     vec3 C = vec3(0.0), T = vec3(1.0);
     float t = tn + stepAt(ro + rd * tn, rd) * jit;
-    for (int i = 0; i < 900; i++) {
+    for (int i = 0; i < 700; i++) {
       if (t > tf) break;
       vec3 p = ro + rd * t;
       float dt = stepAt(p, rd);
@@ -190,7 +192,7 @@ void main() {
           C += T * a * col * 1.1;
           T *= 1.0 - a;
         }
-        if (max(T.r, max(T.g, T.b)) < 0.01) break;
+        if (max(T.r, max(T.g, T.b)) < 0.02) break;
       }
       t += dt;
     }
