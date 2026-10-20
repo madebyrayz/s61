@@ -1,0 +1,117 @@
+/* ---------------------------------------------------------------------------
+   Design tokens — vendored from madebyrayz/design-system.
+
+   tokens/shadcn.css supplies the colour, radius and shadow scale (HSL triples,
+   dark by default, [data-theme="light"] for the light palette); tokens/tokens.css
+   supplies TWK Lausanne and the type / space scale. Both are copied here rather
+   than imported so this project builds on its own; keep them in sync by hand.
+
+   TWK Lausanne is licensed to the author (Nizar Kazan / TYPE.WELTKERN®) for
+   this site. Only the five-weight subset is shipped. The files are not for reuse.
+   --------------------------------------------------------------------------- */
+
+@font-face { font-family: "TWK Lausanne"; font-style: normal; font-weight: 400; font-display: swap;
+  src: local("TWK Lausanne 400"), local("TWKLausanne-400"), url("/fonts/TWKLausanne-400.woff2") format("woff2"); }
+@font-face { font-family: "TWK Lausanne"; font-style: italic; font-weight: 400; font-display: swap;
+  src: local("TWK Lausanne 400 Italic"), local("TWKLausanne-400Italic"), url("/fonts/TWKLausanne-400Italic.woff2") format("woff2"); }
+@font-face { font-family: "TWK Lausanne"; font-style: normal; font-weight: 500; font-display: swap;
+  src: local("TWK Lausanne 500"), local("TWKLausanne-500"), url("/fonts/TWKLausanne-500.woff2") format("woff2"); }
+@font-face { font-family: "TWK Lausanne"; font-style: normal; font-weight: 600; font-display: swap;
+  src: local("TWK Lausanne 600"), local("TWKLausanne-600"), url("/fonts/TWKLausanne-600.woff2") format("woff2"); }
+@font-face { font-family: "TWK Lausanne"; font-style: normal; font-weight: 700; font-display: swap;
+  src: local("TWK Lausanne 700"), local("TWKLausanne-700"), url("/fonts/TWKLausanne-700.woff2") format("woff2"); }
+
+:root {
+  /* ---- colour (shadcn "neutral", dark) ---- */
+  --background: 0 0% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 0 0% 5.5%;
+  --card-foreground: 0 0% 98%;
+  --popover: 0 0% 7%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 0 0% 9%;
+  --secondary: 0 0% 14.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 0 0% 12%;
+  --muted-foreground: 0 0% 63.9%;
+  --accent: 0 0% 14.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 50.6%;
+  --destructive-foreground: 0 0% 98%;
+  --success: 142 71% 45%;
+  --warning: 38 92% 50%;
+  --border: 0 0% 14.9%;
+  --input: 0 0% 14.9%;
+  --ring: 0 0% 83.1%;
+  --radius: 0.625rem;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / .3);
+  --shadow: 0 4px 12px -2px rgb(0 0 0 / .4);
+  color-scheme: dark;
+
+  /* ---- families. One typeface for everything the reader reads; mono only for
+         machine output — face counts, weights, coordinates. ---- */
+  --font-sans: "TWK Lausanne", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ---- size scale. Minor third off a 15px body, rounded to whole pixels. ---- */
+  --text-2xs: 10.5px;
+  --text-xs:  12px;
+  --text-sm:  13px;
+  --text-base: 15px;
+  --text-lg:  18px;
+  --text-xl:  21px;
+  --text-2xl: 26px;
+  --text-3xl: 34px;
+  --text-4xl: 44px;
+
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semibold: 600;
+  --weight-bold:    700;
+
+  --leading-tight:   1.12;
+  --leading-snug:    1.32;
+  --leading-normal:  1.55;
+  --leading-relaxed: 1.7;
+
+  --tracking-tight:  -0.022em;
+  --tracking-snug:   -0.012em;
+  --tracking-normal: 0;
+  --tracking-wide:   0.06em;
+
+  --measure: 720px;
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 72px;
+
+  /* ---- Local to this project: the panel floats over a live 3D canvas, so it
+         needs a translucent surface the flat design system does not define.
+         Built from --card rather than from a separate palette. ---- */
+  --panel-bg: hsl(var(--card) / 0.82);
+  --panel-stroke: hsl(var(--border) / 0.9);
+  --panel-blur: blur(12px) saturate(140%);
+}
+
+[data-theme="light"] {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 3.9%;
+  --primary: 0 0% 9%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 0 0% 96.1%;
+  --secondary-foreground: 0 0% 9%;
+  --muted: 0 0% 96.1%;
+  --muted-foreground: 0 0% 45.1%;
+  --accent: 0 0% 96.1%;
+  --accent-foreground: 0 0% 9%;
+  --destructive: 0 84.2% 60.2%;
+  --border: 0 0% 89.8%;
+  --input: 0 0% 89.8%;
+  --ring: 0 0% 3.9%;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / .06);
+  --shadow: 0 4px 12px -2px rgb(0 0 0 / .12);
+  color-scheme: light;
+}

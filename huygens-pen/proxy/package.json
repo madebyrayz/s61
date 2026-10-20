@@ -1,0 +1,6 @@
+{
+  "name": "huygens-pen-proxy",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" }
+}
