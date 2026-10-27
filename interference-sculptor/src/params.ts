@@ -42,7 +42,7 @@ export const DEFAULTS: Params = {
   lambda: 0.16,
   handSetsLambda: true,
   depth: 0,
-  render: "threads",
+  render: "volume",
   colorBy: "phase",
   palette: "monet",
   background: "dark",
@@ -158,18 +158,18 @@ export interface Preset {
 export const PRESETS: Preset[] = [
   {
     name: "Blank",
-    note: "Empty space. Draw, and the threads grow from your line.",
+    note: "Empty space. Draw, and the waves glow around your line.",
     strokes: [],
-    values: { render: "threads", background: "dark", palette: "monet" },
+    values: { render: "volume", background: "dark", palette: "monet" },
   },
   {
     name: "Double slit",
-    note: "Young's experiment: two short parallel slits. The threads bundle into the bright fringes between them.",
+    note: "Young's experiment: two short parallel slits. The bright fringes glow between them.",
     strokes: [
       { points: line([-0.14, -0.3, -0.55], [-0.14, 0.3, -0.55]), lambda: 0.16 },
       { points: line([0.14, -0.3, -0.55], [0.14, 0.3, -0.55]), lambda: 0.16 },
     ],
-    values: { render: "threads", background: "dark", palette: "monet" },
+    values: { render: "volume", background: "dark", palette: "monet" },
   },
   {
     name: "Two pinholes",
