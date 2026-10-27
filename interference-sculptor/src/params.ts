@@ -160,7 +160,7 @@ export const PRESETS: Preset[] = [
     name: "Blank",
     note: "Empty space. Draw, and the waves glow around your line.",
     strokes: [],
-    values: { render: "volume", background: "dark", palette: "monet" },
+    values: { render: "volume", threshold: 0.5, density: 0.25, colorBy: "phase", background: "dark", palette: "monet" },
   },
   {
     name: "Double slit",
@@ -169,7 +169,7 @@ export const PRESETS: Preset[] = [
       { points: line([-0.14, -0.3, -0.55], [-0.14, 0.3, -0.55]), lambda: 0.16 },
       { points: line([0.14, -0.3, -0.55], [0.14, 0.3, -0.55]), lambda: 0.16 },
     ],
-    values: { render: "volume", background: "dark", palette: "monet" },
+    values: { render: "volume", threshold: 0.5, density: 0.25, colorBy: "phase", background: "dark", palette: "monet" },
   },
   {
     name: "Two pinholes",
