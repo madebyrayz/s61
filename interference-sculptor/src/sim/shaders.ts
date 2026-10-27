@@ -49,12 +49,11 @@ uniform float uN;
 uniform float uZ;
 uniform float uInvScale;
 uniform float uSoften;
-uniform vec3 uCenter;   // the field is baked around this point
 out vec4 o;
 
 void main() {
   vec3 u = vec3(gl_FragCoord.xy / uN * 2.0 - 1.0, uZ);
-  vec3 p = uCenter + ${WARP.toFixed(3)} * u / sqrt(1.0 - u * u);
+  vec3 p = ${WARP.toFixed(3)} * u / sqrt(1.0 - u * u);
   float I = 0.0, ar = 0.0, ai = 0.0, tr = 0.0, ti = 0.0, m2 = 0.0;
   float g = -1.0;
   for (int i = 0; i < uCount; i++) {
@@ -93,9 +92,7 @@ uniform float uPaper;     // 1 on the light background
 uniform vec3 uBg;
 uniform float uFrame;
 uniform float uStepMul;   // > 1 while the view is moving: longer steps, fewer samples
-uniform float uLambda;
-uniform vec3 uCenter;     // middle of the strokes: the field is centred here
-uniform float uSpread;    // how far the strokes reach from it    // shortest wavelength in the drawing, to know when the grid can no longer resolve it
+uniform float uLambda;    // shortest wavelength in the drawing, to know when the grid can no longer resolve it
 out vec4 o;
 
 const float TAU = 6.28318530718;
@@ -107,8 +104,8 @@ vec3 pal(float t) { return uPa + uPb * cos(TAU * (uPc * t + uPd)); }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 
 /* World ↔ texture. jac is du/dp per axis: how many texture units one world unit spans there. */
-vec3 toU(vec3 p) { vec3 q = (p - uCenter) / WARP; return q / sqrt(1.0 + q * q); }
-vec3 jac(vec3 p) { vec3 q = (p - uCenter) / WARP; vec3 s = 1.0 + q * q; return 1.0 / (WARP * s * sqrt(s)); }
+vec3 toU(vec3 p) { vec3 q = p / WARP; return q / sqrt(1.0 + q * q); }
+vec3 jac(vec3 p) { vec3 q = p / WARP; vec3 s = 1.0 + q * q; return 1.0 / (WARP * s * sqrt(s)); }
 /* World distance per step along rd, so each step crosses about 0.8 of a voxel wherever it is. */
 float stepAt0(vec3 p, vec3 rd) { return (1.6 / uN) / length(jac(p) * rd); }
 /* 1 where a voxel is small enough to resolve a wavelength, 0 where it is not. */
@@ -122,7 +119,7 @@ float stepAt(vec3 p, vec3 rd) { return stepAt0(p, rd) * uStepMul; }
 vec4 S(vec3 p) { return texture(uVol, toU(p) * 0.5 + 0.5); }
 float intensity(vec4 s) { return s.r / max(1.0 - s.r, 1e-3); }
 float phaseOf(vec4 s) { return atan(s.b - 0.5, s.g - 0.5); }
-float fade(vec3 p) { return 1.0 - smoothstep(FADE_START + uSpread, FADE_END + uSpread, length(p - uCenter)); }
+float fade(vec3 p) { return 1.0 - smoothstep(FADE_START, FADE_END, length(p)); }
 /* The shape field: fringe visibility, faded out where the waves are too weak to matter. */
 float F(vec4 s, vec3 p) { return s.a * (1.0 - exp(-intensity(s) * uExposure / uReach)) * fade(p); }
 float Fp(vec3 p) { return F(S(p), p); }
@@ -166,9 +163,7 @@ void main() {
   vec3 bg = background(uv);
 
   /* The field lives inside a sphere of radius FADE_END; march the part of the ray inside it. */
-  vec3 oc = ro - uCenter;
-  float R = FADE_END + uSpread;
-  float b = dot(oc, rd), c = dot(oc, oc) - R * R;
+  float b = dot(ro, rd), c = dot(ro, ro) - FADE_END * FADE_END;
   float disc = b * b - c;
   if (disc <= 0.0) { o = vec4(bg, 1.0); return; }
   float tn = max(-b - sqrt(disc), 0.05);

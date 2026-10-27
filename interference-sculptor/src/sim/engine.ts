@@ -40,10 +40,6 @@ export interface EngineEvents {
 interface Volume {
   tex: WebGLTexture;
   n: number;
-  /** Where the field was baked around: the middle of the strokes, so the glow sits where you drew. */
-  center?: Vec3;
-  /** How far the strokes reach from that middle; the fade sphere grows by this much. */
-  spread?: number;
 }
 
 interface Bake {
@@ -308,9 +304,7 @@ export class Engine {
     let hi: Volume | null = null;
     if (this.sources.length) {
       hi = this.makeVolume(n);
-      const { count, invScale, center, spread } = this.upload(this.sources);
-      hi.center = center;
-      hi.spread = spread;
+      const { count, invScale } = this.upload(this.sources);
       this.job = { vol: hi, layer: 0, count, invScale, live: true };
       while (this.job) this.stepBake();
       this.front = hi;
@@ -378,12 +372,7 @@ export class Engine {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.srcTex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 2, gl.RGBA, gl.FLOAT, data);
-    // Bake around the middle of the strokes, not the world origin.
-    const lo: Vec3 = [Infinity, Infinity, Infinity], hi: Vec3 = [-Infinity, -Infinity, -Infinity];
-    for (const q of sorted) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], q.p[k]); hi[k] = Math.max(hi[k], q.p[k]); }
-    const center: Vec3 = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
-    const spread = Math.min(2.5, Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 2);
-    return { count: Math.min(sorted.length, MAX_SOURCES), invScale: 1 / fieldScale(sorted), center, spread };
+    return { count: Math.min(sorted.length, MAX_SOURCES), invScale: 1 / fieldScale(sorted) };
   }
 
   private startBake(src: Source[], n: number, live: boolean) {
@@ -395,11 +384,8 @@ export class Engine {
       return;
     }
     if (live && this.job && !this.job.live) this.events.onBaking(false);
-    const { count, invScale, center, spread } = this.upload(src);
-    const vol = live ? this.live : this.backVolume(n);
-    vol.center = center;
-    vol.spread = spread;
-    this.job = { vol, layer: 0, count, invScale, live };
+    const { count, invScale } = this.upload(src);
+    this.job = { vol: live ? this.live : this.backVolume(n), layer: 0, count, invScale, live };
     if (!live) this.events.onBaking(true);
     this.baked = true;
   }
@@ -420,7 +406,6 @@ export class Engine {
     gl.uniform1f(loc.uN, n);
     gl.uniform1f(loc.uInvScale, job.invScale);
     gl.uniform1f(loc.uSoften, SOFTEN);
-    gl.uniform3fv(loc.uCenter, job.vol.center ?? [0, 0, 0]);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.viewport(0, 0, n, n);
     gl.disable(gl.BLEND);
@@ -750,8 +735,6 @@ export class Engine {
       gl.uniform1f(loc.uFrame, this.frame % 64);
       gl.uniform1f(loc.uStepMul, this.coarse() ? 1.4 : 1);
       gl.uniform1f(loc.uLambda, this.lambda);
-      gl.uniform3fv(loc.uCenter, this.front?.center ?? [0, 0, 0]);
-      gl.uniform1f(loc.uSpread, this.front?.spread ?? 0);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
     this.drawOverlay(b, paper);
