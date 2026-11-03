@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cave</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #f3f2ee; overflow: hidden; }
+      canvas { display: block; touch-action: none; }
+      .ui {
+        position: fixed; left: 0; right: 0; text-align: center; pointer-events: none;
+        font: 12px/1.5 ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+        letter-spacing: 0.05em; color: rgba(20, 20, 20, 0.5);
+        transition: opacity 0.8s ease;
+      }
+      #hint { bottom: 22px; }
+      #title { top: 20px; font-size: 11px; text-transform: lowercase; letter-spacing: 0.18em; }
+      .ui b { font-weight: 500; color: rgba(20, 20, 20, 0.78); }
+    </style>
+  </head>
+  <body>
+    <div id="title" class="ui"></div>
+    <div id="hint" class="ui"></div>
+    <script src="p5.min.js"></script>
+    <script src="matter.min.js"></script>
+    <script src="sketch.js"></script>
+  </body>
+</html>
