@@ -27,7 +27,7 @@ const ALL = 0x0008;                // collision group for things that exist on e
 const LEVELS = [
   {
     name: 'one · a line is a thing',
-    hint: 'draw a line &nbsp;·&nbsp; <b>enter</b> lets the ball go &nbsp;·&nbsp; <b>r</b> restart &nbsp;·&nbsp; <b>z</b> undo',
+    hint: 'draw a line (in 2D or 3D) &nbsp;·&nbsp; <b>space</b> 2D ↔ 3D &nbsp;·&nbsp; <b>enter</b> lets the ball go &nbsp;·&nbsp; <b>r</b> restart &nbsp;·&nbsp; <b>z</b> undo',
     ball: [50, 172, 0], goal: [905, 324], ink: 700, start3D: false,
     statics: [
       ['all', [0, 170], [300, 300]],
@@ -190,7 +190,8 @@ function drawSheet(layer) {
     const c = [[0, 0], [W, 0], [W, H], [0, H]].map(([x, y]) => P(x, y, z));
     noStroke(); fill(...PAPER, 150 * m);
     quad(c[0].x, c[0].y, c[1].x, c[1].y, c[2].x, c[2].y, c[3].x, c[3].y);
-    stroke(...INK, 60 * m); strokeWeight(1); noFill();
+    const active = layer === drawLayer && LEVELS[level].ink > 0;
+    stroke(...INK, (active ? 150 : 60) * m); strokeWeight(active ? 1.6 : 1); noFill();
     for (let i = 0; i < 4; i++) wobbleLine([c[i], c[(i + 1) % 4]], 0.6);
   }
   // static lines: 'all' lines are drawn on every sheet
@@ -287,7 +288,22 @@ function P(x, y, z) {
 }
 
 // screen → world (only used in 2D, where the camera is flat)
-function toWorld(sx, sy) { return [(sx - width / 2) / S + W / 2, (sy - height / 2 - 10) / S + H / 2]; }
+// screen → world, on the sheet you are drawing on.
+// In 2D this is simple. In 3D we "search" for the point on that sheet whose projection
+// lands under the mouse (Newton's method: guess, see how far off, correct, repeat).
+function toWorld(sx, sy) {
+  let x = (sx - width / 2) / S + W / 2, y = (sy - height / 2 - 10) / S + H / 2;
+  if (m < 0.001) return [x, y];
+  const z = drawLayer * GAP, e = 0.5;
+  for (let it = 0; it < 8; it++) {
+    const p = P(x, y, z), px = P(x + e, y, z), py = P(x, y + e, z);
+    const a = (px.x - p.x) / e, b = (py.x - p.x) / e, c = (px.y - p.y) / e, d = (py.y - p.y) / e;
+    const det = a * d - b * c; if (abs(det) < 1e-9) break;
+    const rx = sx - p.x, ry = sy - p.y;
+    x += (d * rx - b * ry) / det; y += (-c * rx + a * ry) / det;
+  }
+  return [x, y];
+}
 
 // ===== 8. HAND-DRAWN LINES =====
 // Lines "boil" a little, like hand-drawn animation: the wobble changes every few frames.
@@ -317,7 +333,7 @@ function wobbleLine(pts, amp) {
 
 // ===== 9. INPUT =====
 function mousePressed() {
-  if (mode3D || m > 0.05 || inkLeft <= 0) return;   // you draw only in the flat world
+  if (abs(m - (mode3D ? 1 : 0)) > 0.02 || inkLeft <= 0) return;   // not while the camera is turning
   stroke_ = [toWorld(mouseX, mouseY)];
 }
 
