@@ -27,8 +27,8 @@ const ALL = 0x0008;                // collision group for things that exist on e
 const LEVELS = [
   {
     name: 'one · a line is a thing',
-    hint: 'draw a line (in 2D or 3D) &nbsp;·&nbsp; <b>space</b> 2D ↔ 3D &nbsp;·&nbsp; <b>enter</b> lets the ball go &nbsp;·&nbsp; <b>r</b> restart &nbsp;·&nbsp; <b>z</b> undo',
-    ball: [50, 172, 0], goal: [905, 324], ink: 700, start3D: false,
+    hint: 'draw lines (in 2D or 3D) &nbsp;·&nbsp; <b>space</b> 2D ↔ 3D &nbsp;·&nbsp; <b>shift-drag</b> / two-finger swipe to spin, pinch to zoom, <b>v</b> reset view &nbsp;·&nbsp; <b>enter</b> lets the ball go &nbsp;·&nbsp; <b>r</b> restart &nbsp;·&nbsp; <b>z</b> undo',
+    ball: [50, 172, 0], goal: [905, 324], ink: 6000, start3D: false,
     statics: [
       ['all', [0, 170], [300, 300]],
       ['all', [640, 300], [760, 300], [1000, 340]],
@@ -37,7 +37,7 @@ const LEVELS = [
   {
     name: 'two · depth',
     hint: 'a wall on another sheet blocks you only when the world is flat &nbsp;·&nbsp; <b>space</b> 2D ↔ 3D',
-    ball: [70, 164, 0], goal: [905, 500], ink: 0, start3D: false,
+    ball: [70, 164, 0], goal: [905, 500], ink: 6000, start3D: false,
     statics: [
       ['all', [0, 150], [520, 420], [1000, 520]],
       [1, [560, 260], [560, 520]],
@@ -46,7 +46,7 @@ const LEVELS = [
   {
     name: 'three · flatten in time',
     hint: 'go deep to slip through the wall, then flatten to land on the far sheet',
-    ball: [60, 110, 0], goal: [920, 407], ink: 0, start3D: false,
+    ball: [60, 110, 0], goal: [920, 407], ink: 6000, start3D: false,
     statics: [
       ['all', [0, 110], [600, 330]],
       [1, [400, 120], [400, 330]],
@@ -56,7 +56,7 @@ const LEVELS = [
   {
     name: 'four · your own depth',
     hint: 'build a bridge, then find the dimension where the hanging wall is not there &nbsp;·&nbsp; <b>1 2 3</b> pick the sheet you draw on',
-    ball: [36, 56, 0], goal: [900, 217], ink: 900, start3D: false,
+    ball: [36, 56, 0], goal: [900, 217], ink: 6000, start3D: false,
     statics: [
       ['all', [0, 60], [230, 186], [290, 190]],
       [1, [470, 0], [470, 172]],
@@ -75,10 +75,13 @@ let m = 0;              // smooth 0 (2D) → 1 (3D) used by the camera
 let drawLayer = 0;      // which sheet new lines go on
 let stroke_ = null;     // the line being drawn right now
 let S = 1;              // world → screen scale
+let yaw3 = -0.62, pitch3 = 0.32, zoom = 1;   // the 3D camera, which you can spin around
+let orbiting = false;
 
 // ===== 4. SETUP =====
 function setup() {
   createCanvas(windowWidth, windowHeight);
+  document.oncontextmenu = () => false;   // so right-drag can spin the camera
   pixelDensity(min(2, displayDensity()));
   fitScale();
   loadLevel(0);
@@ -175,8 +178,10 @@ function draw() {
   if (!won && dist(ball.position.x, ball.position.y, goal.x, goal.y - 22) < 34) won = 1;
   if (won) { won++; if (won > 90) loadLevel(level + 1); }
 
-  // painter's order: back sheet first, front sheet last
-  for (let layer = LAYERS - 1; layer >= 0; layer--) drawSheet(layer);
+  // painter's order: the sheet furthest from the camera first, the nearest last
+  // (this changes as you spin around, so we measure each sheet's distance every frame)
+  const order = [...Array(LAYERS).keys()].sort((a, b) => P(W / 2, H / 2, b * GAP).depth - P(W / 2, H / 2, a * GAP).depth);
+  for (const layer of order) drawSheet(layer);
   drawGoal();
   drawInkBar();
 }
@@ -277,17 +282,16 @@ function drawInkBar() {
 // In 2D the camera looks straight at the sheets (z is ignored).
 // In 3D it swings round and tilts down, so z (depth) appears.
 function P(x, y, z) {
-  const yaw = -0.62 * m, pitch = 0.32 * m, D = 1500;
+  const yaw = yaw3 * m, pitch = pitch3 * m, D = 1500;
   const qx = x - W / 2, qy = y - H / 2, qz = z - GAP;
   const x1 = qx * cos(yaw) - qz * sin(yaw);
   const z1 = qx * sin(yaw) + qz * cos(yaw);
   const y2 = qy * cos(pitch) - z1 * sin(pitch);
   const z2 = qy * sin(pitch) + z1 * cos(pitch);
-  const k = lerp(1, D / (D + z2), m);
-  return { x: width / 2 + x1 * k * S, y: height / 2 + 10 + y2 * k * S, k };
+  const k = lerp(1, zoom * D / (D + z2), m);
+  return { x: width / 2 + x1 * k * S, y: height / 2 + 10 + y2 * k * S, k, depth: z2 };
 }
 
-// screen → world (only used in 2D, where the camera is flat)
 // screen → world, on the sheet you are drawing on.
 // In 2D this is simple. In 3D we "search" for the point on that sheet whose projection
 // lands under the mouse (Newton's method: guess, see how far off, correct, repeat).
@@ -333,11 +337,21 @@ function wobbleLine(pts, amp) {
 
 // ===== 9. INPUT =====
 function mousePressed() {
+  // shift + drag, or right-drag, spins the camera around (in 3D)
+  if (keyIsDown(SHIFT) || mouseButton === RIGHT) {
+    if (!mode3D) { mode3D = true; updateFilters(); }   // spinning only makes sense in 3D
+    orbiting = true; return;
+  }
   if (abs(m - (mode3D ? 1 : 0)) > 0.02 || inkLeft <= 0) return;   // not while the camera is turning
   stroke_ = [toWorld(mouseX, mouseY)];
 }
 
 function mouseDragged() {
+  if (orbiting) {
+    yaw3 -= movedX * 0.008;
+    pitch3 = constrain(pitch3 + movedY * 0.006, -1.3, 1.3);
+    return;
+  }
   if (!stroke_) return;
   const p = toWorld(mouseX, mouseY), last = stroke_[stroke_.length - 1];
   const d = dist(p[0], p[1], last[0], last[1]);
@@ -345,6 +359,7 @@ function mouseDragged() {
 }
 
 function mouseReleased() {
+  orbiting = false;
   if (!stroke_) return;
   if (stroke_.length >= 2) {
     const body = lineBody(stroke_, false);
@@ -361,7 +376,16 @@ function mouseReleased() {
   stroke_ = null;
 }
 
+// Trackpad: two-finger swipe spins the camera, pinch zooms (in 3D).
+function mouseWheel(e) {
+  if (!mode3D) return;
+  if (e.ctrlKey) zoom = constrain(zoom * exp(-e.delta * 0.01), 0.4, 3);
+  else { yaw3 -= e.deltaX * 0.004; pitch3 = constrain(pitch3 + e.deltaY * 0.003, -1.3, 1.3); }
+  return false;
+}
+
 function keyPressed() {
+  if (key === 'v' || key === 'V') { yaw3 = -0.62; pitch3 = 0.32; zoom = 1; }
   if (key === ' ') { mode3D = !mode3D; updateFilters(); return false; }
   if (keyCode === ENTER) { if (!released) { Body.setStatic(ball, false); setLayer(ball, ballLayer); updateFilters(); released = true; } }
   if (key === 'r' || key === 'R') loadLevel(level);
