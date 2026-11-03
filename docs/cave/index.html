@@ -16,10 +16,18 @@
       #hint { bottom: 22px; }
       #title { top: 20px; font-size: 11px; text-transform: lowercase; letter-spacing: 0.18em; }
       .ui b { font-weight: 500; color: rgba(20, 20, 20, 0.78); }
+      #tools { top: 44px; pointer-events: auto; user-select: none; }
+      #tools span { display: inline-block; padding: 3px 7px; margin: 0 1px; border-radius: 6px; cursor: pointer; }
+      #tools span:hover { background: rgba(20, 20, 20, 0.06); }
+      #tools span.on { color: rgba(20, 20, 20, 0.9); background: rgba(20, 20, 20, 0.08); }
+      #tools span.off { opacity: 0.35; }
+      #tools i { font-style: normal; opacity: 0.45; font-size: 10px; margin-left: 2px; }
+      #tools em { font-style: normal; opacity: 0.4; margin: 0 6px; }
     </style>
   </head>
   <body>
     <div id="title" class="ui"></div>
+    <div id="tools" class="ui"></div>
     <div id="hint" class="ui"></div>
     <script src="p5.min.js"></script>
     <script src="matter.min.js"></script>
