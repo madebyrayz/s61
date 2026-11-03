@@ -77,6 +77,7 @@ let stroke_ = null;     // the line being drawn right now
 let S = 1;              // world → screen scale
 let yaw3 = -0.62, pitch3 = 0.32, zoom = 1;   // the 3D camera, which you can spin around
 let orbiting = false;
+let unlimitedInk = true; // press i to switch between unlimited ink and the level's ink limit
 
 // ===== 4. SETUP =====
 function setup() {
@@ -195,7 +196,7 @@ function drawSheet(layer) {
     const c = [[0, 0], [W, 0], [W, H], [0, H]].map(([x, y]) => P(x, y, z));
     noStroke(); fill(...PAPER, 150 * m);
     quad(c[0].x, c[0].y, c[1].x, c[1].y, c[2].x, c[2].y, c[3].x, c[3].y);
-    const active = layer === drawLayer && LEVELS[level].ink > 0;
+    const active = layer === drawLayer;
     stroke(...INK, (active ? 150 : 60) * m); strokeWeight(active ? 1.6 : 1); noFill();
     for (let i = 0; i < 4; i++) wobbleLine([c[i], c[(i + 1) % 4]], 0.6);
   }
@@ -264,12 +265,14 @@ function drawGoal() {
 
 function drawInkBar() {
   const L = LEVELS[level];
-  if (!L.ink) return;
-  const full = 160, left = full * (inkLeft / L.ink);
+  const full = 160, left = unlimitedInk ? full : full * (inkLeft / L.ink);
   stroke(...INK, 40); strokeWeight(2);
   line(width / 2 - full / 2, 48, width / 2 + full / 2, 48);
   stroke(...INK, 200);
   line(width / 2 - full / 2, 48, width / 2 - full / 2 + left, 48);
+  noStroke(); fill(...INK, 120); textSize(10); textAlign(RIGHT, CENTER);
+  text(unlimitedInk ? 'ink ∞  (i)' : 'ink  (i)', width / 2 - full / 2 - 12, 48);
+  noFill();
   // which sheet you are drawing on: three little marks, the active one dark
   for (let i = 0; i < LAYERS; i++) {
     stroke(...INK, i === drawLayer ? 220 : 50); strokeWeight(i === drawLayer ? 3 : 1.5);
@@ -342,7 +345,7 @@ function mousePressed() {
     if (!mode3D) { mode3D = true; updateFilters(); }   // spinning only makes sense in 3D
     orbiting = true; return;
   }
-  if (abs(m - (mode3D ? 1 : 0)) > 0.02 || inkLeft <= 0) return;   // not while the camera is turning
+  if (abs(m - (mode3D ? 1 : 0)) > 0.02 || (!unlimitedInk && inkLeft <= 0)) return;   // not while the camera is turning
   stroke_ = [toWorld(mouseX, mouseY)];
 }
 
@@ -355,7 +358,7 @@ function mouseDragged() {
   if (!stroke_) return;
   const p = toWorld(mouseX, mouseY), last = stroke_[stroke_.length - 1];
   const d = dist(p[0], p[1], last[0], last[1]);
-  if (d > 9 && inkLeft - d > 0) { stroke_.push(p); inkLeft -= d; }
+  if (d > 9 && (unlimitedInk || inkLeft - d > 0)) { stroke_.push(p); if (!unlimitedInk) inkLeft -= d; }
 }
 
 function mouseReleased() {
@@ -385,6 +388,7 @@ function mouseWheel(e) {
 }
 
 function keyPressed() {
+  if (key === 'i' || key === 'I') unlimitedInk = !unlimitedInk;
   if (key === 'v' || key === 'V') { yaw3 = -0.62; pitch3 = 0.32; zoom = 1; }
   if (key === ' ') { mode3D = !mode3D; updateFilters(); return false; }
   if (keyCode === ENTER) { if (!released) { Body.setStatic(ball, false); setLayer(ball, ballLayer); updateFilters(); released = true; } }
