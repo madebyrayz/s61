@@ -1,0 +1,146 @@
+/* Thin Air — a camera you can draw on. Quiet, floating, glassy interface. */
+
+:root {
+  --glass: rgba(28, 30, 34, 0.38);
+  --glass-line: rgba(255, 255, 255, 0.16);
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.6);
+  --font: "Inter", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0e10; color: var(--text); font-family: var(--font); }
+
+/* the camera, mirrored, covering the window */
+#cam {
+  position: fixed; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; transform: scaleX(-1);
+  filter: saturate(0.85) brightness(0.92);
+  transition: filter 0.6s ease;
+}
+#wash { position: fixed; inset: 0; background: #f4f3ef; opacity: 0; pointer-events: none; transition: opacity 0.6s ease; }
+body.paper #cam { filter: grayscale(1) contrast(0.75) brightness(1.25); }
+body.paper #wash { opacity: 0.55; }
+
+#ink { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+
+/* liquid glass */
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  backdrop-filter: blur(18px) saturate(1.6);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+body.paper .glass { --glass: rgba(255, 255, 255, 0.5); --glass-line: rgba(0, 0, 0, 0.08); --text: rgba(20, 20, 22, 0.88); --muted: rgba(20, 20, 22, 0.5); color: var(--text); }
+
+#brand {
+  position: fixed; top: 18px; left: 22px;
+  font-size: 13px; font-weight: 500; letter-spacing: -0.01em; color: var(--muted);
+  pointer-events: none; user-select: none;
+}
+body.paper #brand { color: rgba(20, 20, 22, 0.5); }
+
+/* start card */
+#start {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(380px, calc(100% - 32px)); padding: 30px 28px 24px; border-radius: 22px; text-align: center;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+#start.gone { opacity: 0; transform: translate(-50%, -46%); pointer-events: none; }
+#start h1 { margin: 0 0 10px; font-size: 26px; font-weight: 500; letter-spacing: -0.03em; }
+#start p { margin: 0 0 22px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+#start small { display: block; margin-top: 14px; font-size: 11.5px; color: var(--muted); min-height: 1.4em; }
+#go {
+  font: 500 14px var(--font); color: #111; background: #fff; border: 0;
+  padding: 11px 22px; border-radius: 999px; cursor: pointer;
+}
+#go:disabled { opacity: 0.5; cursor: default; }
+
+
+/* bottom dock */
+#dock {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 2px; padding: 5px; border-radius: 999px;
+  opacity: 0; transition: opacity 0.6s ease;
+}
+body.running #dock { opacity: 1; }
+#dock button {
+  display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px;
+  border: 0; border-radius: 999px; background: transparent; color: var(--text);
+  font: 500 12.5px var(--font); cursor: pointer; transition: background 0.2s ease;
+}
+#dock button:hover { background: rgba(255, 255, 255, 0.1); }
+body.paper #dock button:hover { background: rgba(0, 0, 0, 0.06); }
+#dock button.active { background: rgba(255, 255, 255, 0.18); }
+body.paper #dock button.active { background: rgba(0, 0, 0, 0.09); }
+#dock svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+#dock svg .fill { fill: currentColor; stroke: none; }
+#dock .sep { width: 1px; height: 18px; background: var(--glass-line); margin: 0 4px; }
+
+body.clean #dock, body.clean #brand, body.clean #legend, body.clean #sight-panel { opacity: 0 !important; pointer-events: none; }
+
+@media (max-width: 520px) { #dock button span { display: none; } }
+
+/* play / pause */
+#b-play .i-play { display: none; }
+#b-play.paused .i-play { display: block; }
+#b-play.paused .i-pause { display: none; }
+#paused {
+  position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+  font-size: 12px; letter-spacing: 0.08em; color: var(--muted); opacity: 0; transition: opacity 0.3s ease; pointer-events: none;
+}
+body.is-paused #paused { opacity: 1; }
+
+/* gesture list (start card + legend) */
+.gestures { list-style: none; margin: 0; padding: 0; }
+.gestures li { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text); }
+.gestures li span { width: 20px; text-align: center; font-size: 15px; }
+#start .gestures { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin: -6px auto 22px; width: fit-content; text-align: left; }
+#legend {
+  position: fixed; left: 18px; bottom: 22px; padding: 12px 16px 12px 12px; border-radius: 16px;
+  display: grid; gap: 7px; opacity: 0; transition: opacity 0.6s ease;
+}
+body.running #legend { opacity: 1; }
+#legend li { font-size: 12px; color: var(--muted); }
+
+/* AI sight card */
+#sight-panel {
+  position: fixed; top: 16px; right: 16px; width: 248px; padding: 14px; border-radius: 18px;
+  font-size: 12px; color: var(--text);
+  opacity: 0; transform: translateY(-6px); pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+body.sight-on #sight-panel { opacity: 1; transform: none; pointer-events: auto; }
+#sight-panel header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+#sight-panel header b { font-weight: 600; font-size: 12.5px; letter-spacing: -0.01em; }
+#sp-status { display: flex; gap: 10px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+#sp-status span { display: flex; align-items: center; gap: 5px; }
+#sp-status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.35; }
+#sp-status i.on { background: #7be3a4; opacity: 1; }
+#sight-panel small { display: block; font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.sp-model { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+#sp-input { width: 72px; height: 72px; border-radius: 10px; background: #000; image-rendering: pixelated; flex: none; border: 1px solid var(--glass-line); }
+.sp-model p { margin: 0; font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+#sp-guesses { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+#sp-guesses li { display: grid; grid-template-columns: 1fr 56px 32px; align-items: center; gap: 8px; color: var(--muted); }
+#sp-guesses li.top { color: var(--text); font-weight: 500; }
+#sp-guesses li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sp-guesses li b { height: 4px; border-radius: 2px; background: linear-gradient(90deg, currentColor calc(var(--p) * 100%), rgba(255,255,255,0.12) 0); }
+body.paper #sp-guesses li b { background: linear-gradient(90deg, currentColor calc(var(--p) * 100%), rgba(0,0,0,0.1) 0); }
+#sp-guesses li em { font-style: normal; text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; }
+#sp-guesses li.empty { display: block; font-size: 11.5px; }
+body.erasing #ink { cursor: cell; }
+@media (max-width: 640px) { #legend { display: none; } #sight-panel { width: calc(100% - 32px); } }
+
+/* pen state pill (top centre) */
+#pill {
+  position: fixed; top: 16px; left: 50%; transform: translate(-50%, -8px);
+  padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 500; white-space: nowrap;
+  background: rgba(16, 18, 22, 0.6); color: var(--ink, #fff); border: 1px solid color-mix(in srgb, var(--ink, #fff) 40%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  opacity: 0; pointer-events: none; transition: opacity 0.25s ease, transform 0.25s ease;
+}
+#pill.on { opacity: 1; transform: translate(-50%, 0); }
+body.paper #pill { background: rgba(255, 255, 255, 0.75); color: #111; }
+body.is-paused #pill.on ~ #paused, body.is-paused #paused { top: 56px; }
