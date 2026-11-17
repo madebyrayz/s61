@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Thin Air</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- 1. the camera: it fills the window and is mirrored like a selfie -->
+    <video id="cam" playsinline muted></video>
+    <!-- a soft white wash, only visible in "paper" mode -->
+    <div id="wash"></div>
+    <!-- 2. one transparent canvas on top: your ink, the creatures, the AI overlay -->
+    <canvas id="ink"></canvas>
+
+    <!-- 3. the interface: small, floating, out of the way -->
+    <div id="brand">thin air</div>
+
+    <div id="start" class="glass">
+      <h1>thin air</h1>
+      <p>Draw in the air with your fingers.<br />Pinch thumb and index to draw, let go, and the drawing comes alive.</p>
+      <button id="go">Start camera</button>
+      <small id="status">Everything runs on this computer. Nothing is uploaded.</small>
+    </div>
+
+    <div id="hint">pinch to draw · open to stop · wait a moment and it comes alive</div>
+
+    <div id="dock" class="glass">
+      <button id="b-sight" title="What the AI sees (V)">
+        <svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>
+        <span>Sight</span>
+      </button>
+      <button id="b-paper" title="Paper mode: black ink on a faded camera (P)">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"/><path d="M12 4.5v15a7.5 7.5 0 0 0 0-15Z" class="fill"/></svg>
+        <span>Paper</span>
+      </button>
+      <i class="sep"></i>
+      <button id="b-undo" title="Undo (Z)">
+        <svg viewBox="0 0 24 24"><path d="M9 7 4.5 11.5 9 16"/><path d="M5 11.5h9a5 5 0 0 1 0 10h-2"/></svg>
+      </button>
+      <button id="b-clear" title="Clear all (C)">
+        <svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>
+      </button>
+    </div>
+
+    <!-- libraries (all stored in this folder, so it works offline) -->
+    <script src="lib/tf.min.js"></script>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
