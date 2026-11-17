@@ -7,7 +7,8 @@
 // Both run locally on your laptop's GPU. Nothing is uploaded anywhere.
 //
 // This file turns their raw answers into things the rest of the app can use:
-//   sense.hand  → where your fingertip is on screen, and are you pinching?
+//   sense.hands → for each hand (up to two): where the pen tip is, pinching?
+//                 pointing? fist?
 //   sense.body  → "anchors": the top of your head, your shoulders, your eyes…
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -16,7 +17,7 @@ import { FilesetResolver, HandLandmarker, PoseLandmarker } from '../lib/vision_b
 // Everything other files read lives in this one object.
 export const sense = {
   ready: false,
-  hand: null,   // null when no hand is visible
+  hands: [],   // 0, 1 or 2 hands, each { key, cursor, pinch, fist, … }
   body: null,   // null when no person is visible
   fps: 0,
 };
@@ -47,7 +48,7 @@ export async function loadVision(videoEl, onStep = () => {}) {
 
   onStep('loading hand model');
   handNet = await make(HandLandmarker, 'models/hand_landmarker.task', {
-    numHands: 1,                     // one hand is enough, and twice as cheap
+    numHands: 2,                     // two hands: each one can draw
     minHandDetectionConfidence: 0.5,
     minTrackingConfidence: 0.5,
   });
@@ -91,12 +92,17 @@ class OneEuro {
 const fx = new OneEuro(), fy = new OneEuro();
 
 // ── the per-frame update ─────────────────────────────────────────────────────
+// Each hand keeps its own memory (smoothing filters, pinch state, depth), in
+// `trackers`, keyed by "Left" / "Right" (MediaPipe tells us which hand it is).
+const trackers = {};
+function tracker(key) {
+  return (trackers[key] ??= {
+    fx: new OneEuro(), fy: new OneEuro(),
+    pinching: false, palmRef: 0, depth: 0, prev: null, missing: 0, last: null,
+  });
+}
+
 let lastVideoTime = -1, lastRun = 0, frame = 0, fpsT = 0, fpsN = 0;
-let pinching = false;
-let palmRef = 0;            // your "usual" hand size, for depth
-let depth = 0;              // smoothed depth of the hand
-let prevCursor = null;
-let missing = 0;            // frames since the hand was last seen
 
 export function updateVision(now) {
   if (!sense.ready || video.readyState < 2) return;
@@ -111,14 +117,25 @@ export function updateVision(now) {
 
   const map = mapper();
 
-  // HAND: every frame (it drives the pen, so it must be responsive)
+  // HANDS: every frame (they drive the pens, so they must be responsive)
   const h = handNet.detectForVideo(video, now);
-  if (h.landmarks && h.landmarks.length) {
-    missing = 0;
-    readHand(h.landmarks[0].map(map), dt);
-  } else if (++missing > 3) {        // forgive a few dropped frames mid-stroke
-    sense.hand = null; pinching = false; fx.reset(); fy.reset(); prevCursor = null;
+  const seen = new Set();
+  (h.landmarks || []).forEach((lm, i) => {
+    // The camera image is mirrored on screen, so MediaPipe's "Left" is your right.
+    const raw = h.handednesses?.[i]?.[0]?.categoryName || h.handedness?.[i]?.[0]?.categoryName || 'Hand' + i;
+    let key = raw === 'Left' ? 'right' : raw === 'Right' ? 'left' : raw;
+    if (seen.has(key)) key += '2';          // two hands guessed as the same side
+    seen.add(key);
+    const t = tracker(key);
+    t.missing = 0;
+    t.last = readHand(key, t, lm.map(map), dt);
+  });
+  // forgive a few dropped frames, so a stroke isn't cut in the middle
+  for (const [key, t] of Object.entries(trackers)) {
+    if (seen.has(key)) continue;
+    if (++t.missing > 3 && t.last) { t.last = null; t.pinching = false; t.fx.reset(); t.fy.reset(); t.prev = null; }
   }
+  sense.hands = Object.values(trackers).map((t) => t.last).filter(Boolean);
 
   // BODY: every second frame (it moves slowly; this halves the cost)
   if (frame % 2 === 0) {
@@ -132,37 +149,42 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // Hand landmark numbers (MediaPipe's numbering):
 //   0 wrist · 4 thumb tip · 8 index tip · 6 index middle joint · 9 middle knuckle
-//   12 middle tip · 16 ring tip · 20 pinky tip
-function readHand(pts, dt) {
+//   12 middle tip · 16 ring tip · 20 pinky tip  (tip − 2 = that finger's middle joint)
+function readHand(key, t, pts, dt) {
   const palm = dist(pts[0], pts[9]);          // wrist → middle knuckle, in px
   const gap = dist(pts[4], pts[8]) / palm;    // thumb tip ↔ index tip, relative
 
+  // Is a finger stretched out? (its tip is further from the wrist than its middle joint)
+  const ext = (tip) => dist(pts[tip], pts[0]) > dist(pts[tip - 2], pts[0]) * 1.1;
+  // FIST: all four fingers folded in. Used to delete a drawing.
+  const folded = !ext(8) && !ext(12) && !ext(16) && !ext(20);
+
   // Pinch with "hysteresis": closing below 0.32 starts a stroke, but you have
   // to open past 0.5 to stop. Otherwise the pen would flicker on and off.
-  if (!pinching && gap < 0.32) pinching = true;
-  else if (pinching && gap > 0.5) pinching = false;
+  if (!t.pinching && gap < 0.32) t.pinching = true;
+  else if (t.pinching && gap > 0.5) t.pinching = false;
 
   // The pen tip: halfway between thumb and index tips (where the pinch is).
   const raw = { x: (pts[4].x + pts[8].x) / 2, y: (pts[4].y + pts[8].y) / 2 };
-  const cursor = { x: fx.filter(raw.x, dt), y: fy.filter(raw.y, dt) };
+  const cursor = { x: t.fx.filter(raw.x, dt), y: t.fy.filter(raw.y, dt) };
 
   // Depth: a hand closer to the camera looks bigger. We compare the palm size
   // with a slowly-updated "usual" size: bigger than usual → nearer (z > 0).
-  palmRef = palmRef ? palmRef + (palm - palmRef) * 0.01 : palm;
-  const zTarget = Math.max(-350, Math.min(350, (palm / palmRef - 1) * 900));
-  depth += (zTarget - depth) * 0.15;
+  t.palmRef = t.palmRef ? t.palmRef + (palm - t.palmRef) * 0.01 : palm;
+  const zTarget = Math.max(-350, Math.min(350, (palm / t.palmRef - 1) * 900));
+  t.depth += (zTarget - t.depth) * 0.15;
 
-  // Is the index finger pointing up (tip far from wrist, others folded)?
-  // A butterfly may land on it.
-  const ext = (tip, mid) => dist(pts[tip], pts[0]) > dist(pts[mid], pts[0]) * 1.15;
-  const indexUp = ext(8, 6) && !ext(12, 10) && !pinching;
+  const fist = folded && !t.pinching;
 
-  const speed = prevCursor ? dist(cursor, prevCursor) / dt : 0;
-  prevCursor = cursor;
+  // Pointing: only the index finger out. A butterfly may land on it.
+  const indexUp = ext(8) && !ext(12) && !t.pinching;
 
-  sense.hand = {
-    pts, palm, pinch: pinching, gap, cursor, z: depth, indexUp, speed,
-    tip: pts[8],
+  const speed = t.prev ? dist(cursor, t.prev) / dt : 0;
+  t.prev = cursor;
+
+  return {
+    key, pts, palm, pinch: t.pinching, gap, cursor, z: t.depth, indexUp, fist, speed,
+    tip: pts[8], centre: pts[9],
   };
 }
 

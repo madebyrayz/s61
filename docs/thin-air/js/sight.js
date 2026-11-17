@@ -73,17 +73,16 @@ export function drawSight(g, { sense, creatures, pending, lastGuess, W, H }) {
     }
   }
 
-  // ── hand ──
-  const h = sense.hand;
-  if (h) {
+  // ── hands (up to two) ──
+  for (const h of sense.hands) {
     g.strokeStyle = C.line;
     g.beginPath();
     for (const [a, b] of HAND_BONES) { g.moveTo(h.pts[a].x, h.pts[a].y); g.lineTo(h.pts[b].x, h.pts[b].y); }
     g.stroke();
     g.fillStyle = C.text;
     for (const p of h.pts) { g.beginPath(); g.arc(p.x, p.y, 1.8, 0, 7); g.fill(); }
-    const state = h.pinch ? 'pinch · drawing' : h.indexUp ? 'pointing · perch' : 'open';
-    tag(g, `${state}  gap ${h.gap.toFixed(2)}  z ${h.z.toFixed(0)}`, h.pts[0].x, h.pts[0].y + 24, C.text, 'center');
+    const state = h.pinch ? 'pinch · drawing' : h.fist ? 'fist · delete' : h.indexUp ? 'pointing · perch' : 'open';
+    tag(g, `${h.key} hand · ${state}  gap ${h.gap.toFixed(2)}  z ${h.z.toFixed(0)}`, h.pts[0].x, h.pts[0].y + 24, C.text, 'center');
   }
 
   // ── creatures: label, confidence, intention ──
@@ -122,6 +121,6 @@ export function drawSight(g, { sense, creatures, pending, lastGuess, W, H }) {
 
   // ── status line ──
   const dot = (on) => (on ? '●' : '○');
-  tag(g, `hand ${dot(h)}   body ${dot(body)}   ${sense.fps} fps`, W - 16, 40, C.text, 'right');
+  tag(g, `hands ${sense.hands.length}   body ${dot(body)}   ${sense.fps} fps`, W - 16, 40, C.text, 'right');
   g.restore();
 }

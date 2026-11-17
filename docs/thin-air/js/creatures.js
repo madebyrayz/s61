@@ -107,6 +107,25 @@ export function setLabel(c, gi) {
 }
 
 export function removeLast() { creatures.pop(); }
+// Delete one creature with a little "poof" (it shrinks and fades, see drawCreatures).
+export function remove(c) { if (c && c.dying === undefined) c.dying = 0; }
+// Which creature is under this screen point? (uses the box from the last frame)
+export function creatureAt(x, y, pad = 14) {
+  for (let i = creatures.length - 1; i >= 0; i--) {
+    const c = creatures[i], b = c.box;
+    if (b && c.dying === undefined && x > b.x0 - pad && x < b.x1 + pad && y > b.y0 - pad && y < b.y1 + pad) return c;
+  }
+  return null;
+}
+// Fade out deleted creatures, then forget them.
+export function tickDying(dt) {
+  for (let i = creatures.length - 1; i >= 0; i--) {
+    const c = creatures[i];
+    if (c.dying === undefined) continue;
+    c.dying += dt;
+    if (c.dying > 0.45) creatures.splice(i, 1);
+  }
+}
 export function clearAll() { creatures.length = 0; }
 
 // ── shared helpers ───────────────────────────────────────────────────────────
@@ -146,8 +165,8 @@ function spots(world) {
     out.head = A.head;
     if (A.lShoulder) { out.lShoulder = A.lShoulder; out.rShoulder = A.rShoulder; }
   }
-  const h = world.hand;
-  if (h && h.indexUp) out.finger = { x: h.tip.x, y: h.tip.y - 6 };
+  const h = world.hands.find((h) => h.indexUp);
+  if (h) out.finger = { x: h.tip.x, y: h.tip.y - 6 };
   return out;
 }
 
@@ -413,6 +432,14 @@ export function updateCreatures(dt, world) {
   // which landing spots are already taken?
   world.taken = new Set(creatures.map((c) => (c.state === 'seek' || c.state === 'perch') && c.place).filter(Boolean));
   for (const c of creatures) {
+    // each creature pays attention to the hand nearest to it
+    world.hand = null;
+    let best = Infinity;
+    for (const h of world.hands) {
+      const d = Math.hypot(h.cursor.x - c.pos.x, h.cursor.y - c.pos.y);
+      if (d < best) { best = d; world.hand = h; }
+    }
+    if (c.dying !== undefined) continue;     // being deleted: just fade out
     c.age += dt;
     (B[c.cfg.b] || B.float)(c, dt, world);
     // turn around smoothly in 3D (yaw = rotation around the vertical axis)
@@ -467,6 +494,11 @@ export function drawCreatures(g) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     // a soft "flash" in the first moment of life
     const born = Math.max(0, 1 - c.age / 0.6);
+    // deleting: shrink and fade for 0.45 s
+    const d = c.dying === undefined ? 0 : c.dying / 0.45;
+    const keepSize = c.size;
+    c.size = keepSize * (1 - d * 0.6);
+    const alpha = c.alpha * (1 - d);
     for (const s of c.local) {
       const pts = s.map((p) => {
         const q = project(toWorld(c, p));
@@ -474,8 +506,9 @@ export function drawCreatures(g) {
         if (q.y < y0) y0 = q.y; if (q.y > y1) y1 = q.y;
         return q;
       });
-      drawLine(g, pts, c.alpha, 1 + born * 1.5);
+      drawLine(g, pts, alpha, 1 + born * 1.5 + (c.selected ? 0.8 : 0));
     }
+    c.size = keepSize;
     if (c.thread) {              // the spider's silk
       const top = project({ x: c.pos.x, y: 0, z: c.pos.z });
       g.globalAlpha = 0.6; g.lineWidth = 1; g.strokeStyle = '#fff';

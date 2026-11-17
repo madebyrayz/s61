@@ -24,7 +24,8 @@
       <small id="status">Everything runs on this computer. Nothing is uploaded.</small>
     </div>
 
-    <div id="hint">pinch to draw · open to stop · wait a moment and it comes alive</div>
+    <div id="hint">pinch to draw (either hand) · pause and it comes alive · fist over a drawing deletes it</div>
+    <div id="paused">paused</div>
 
     <div id="dock" class="glass">
       <button id="b-sight" title="What the AI sees (V)">
@@ -36,6 +37,10 @@
         <span>Paper</span>
       </button>
       <i class="sep"></i>
+      <button id="b-play" title="Pause (Space)">
+        <svg viewBox="0 0 24 24" class="i-pause"><path d="M9 6v12M15 6v12"/></svg>
+        <svg viewBox="0 0 24 24" class="i-play"><path d="M8 5.5v13l10.5-6.5Z"/></svg>
+      </button>
       <button id="b-undo" title="Undo (Z)">
         <svg viewBox="0 0 24 24"><path d="M9 7 4.5 11.5 9 16"/><path d="M5 11.5h9a5 5 0 0 1 0 10h-2"/></svg>
       </button>

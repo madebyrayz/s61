@@ -16,13 +16,15 @@ Live version (once merged): <https://madebyrayz.github.io/s61/thin-air/>
 
 | Do this | What happens |
 |---|---|
-| Pinch thumb + index and move | draw (hand nearer the camera = line comes towards you in 3D) |
+| Pinch thumb + index and move | draw, with either hand or both at once (hand nearer the camera = line comes towards you in 3D) |
 | Open your fingers | stop the line |
 | Wait ~1 second | the AI names the drawing and it comes alive |
 | Point one finger up | a butterfly or parrot may land on it |
 | Wave fast near a creature | it gets startled; fish flee, flowers blow in your "wind" |
 | Lean left/right | the drawings shift in depth (head-coupled parallax) |
-| Click a creature (mouse) | cycle through the AI's other guesses |
+| Make a fist over a drawing (hold ~⅓ s) | delete it |
+| Click a drawing (mouse) | select it; **Delete** removes it, clicking again cycles the AI's other guesses |
+| **Space** / ❙❙ | pause / play all the animation |
 | **V** / Sight | see what the AI sees: hand skeleton, body points, landing spots, labels with confidence, each creature's intention, the 28×28 picture the recognizer looked at |
 | **P** / Paper | black ink on a faded camera (Runway-style look) |
 | **Z** / **C** / **H** | undo / clear / hide the interface |
@@ -31,7 +33,7 @@ The mouse also draws, so it works without a camera too.
 
 ## The plan (how it works)
 
-1. **See** (`js/vision.js`): Google MediaPipe finds 21 points on your hand and 33 on your body, live, on your laptop's GPU. Pinch = pen down. Hand size = depth. From the body points we build *anchors*: top of head, eyes, upper lip, neck, both shoulders.
+1. **See** (`js/vision.js`): Google MediaPipe finds 21 points on each hand (up to two) and 33 on your body, live, on your laptop's GPU. Pinch = pen down. Hand size = depth. From the body points we build *anchors*: top of head, eyes, upper lip, neck, both shoulders.
 2. **Draw** (`js/ink.js`): every point has x, y and z. A small perspective camera draws them, and it follows your eyes, so lines in front of the screen move differently from lines behind it.
 3. **Name** (`js/recognize.js`): when you pause, your strokes are painted into a 28×28 picture and fed to *DoodleNet*, a small neural network trained on Google's *Quick, Draw!* doodles (345 categories). It runs locally with TensorFlow.js. No internet, no API key.
 4. **Live** (`js/creatures.js`): each category gets a tiny agent brain: *flutter* (wander, choose a free landing spot on you, land, rest, take off when startled), *wear* (glue to your face and follow its tilt), *swim*, *sky*, *grow*, *fall*, *crawl*, *dangle*, *buzz*, *cruise*. Your own strokes are bent in 3D: wings fold towards you, bodies wave, stems sway. Anything else (345 things!) floats and slowly turns.

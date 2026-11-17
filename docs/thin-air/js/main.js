@@ -11,7 +11,7 @@
 import { sense, loadVision, updateVision } from './vision.js';
 import { loadRecognizer, classify, setFavourites } from './recognize.js';
 import { view, project, unproject, drawLine, style, tickBoil } from './ink.js';
-import { creatures, spawn, setLabel, updateCreatures, drawCreatures, removeLast, clearAll, FAVOURITES } from './creatures.js';
+import { creatures, spawn, setLabel, updateCreatures, drawCreatures, removeLast, clearAll, remove, creatureAt, tickDying, FAVOURITES } from './creatures.js';
 import { drawSight } from './sight.js';
 
 const $ = (id) => document.getElementById(id);
@@ -31,51 +31,61 @@ addEventListener('resize', resize);
 resize();
 
 // ── app state ────────────────────────────────────────────────────────────────
-const ui = { sight: false };
+const ui = { sight: false, paused: false };
 let pending = [];        // finished strokes waiting to be recognised (3D points)
-let current = null;      // the stroke being drawn right now
-let penUpAt = 0;         // when the pen was last lifted
+const pens = {};         // strokes being drawn right now, one per pen: { mouse: [...], left: [...], right: [...] }
+let penUpAt = 0;         // when a pen was last lifted
 let lastGuess = null;    // newest top-5 guesses (for the overlay)
+let selected = null;     // creature picked with the mouse (Delete removes it)
 const chips = [];        // little name labels that fade after a recognition
 const WAIT = 1100;       // ms of no drawing before we "name" the drawing
+const drawing = () => Object.keys(pens).length > 0;
 
-// ── pen: shared by hand and mouse ────────────────────────────────────────────
-function penDown(x, y, z) {
-  current = [];
-  penMove(x, y, z);
+// ── pens: the mouse and each hand are separate pens ──────────────────────────
+function penDown(id, x, y, z) {
+  pens[id] = [];
+  penMove(id, x, y, z);
 }
-function penMove(x, y, z) {
-  if (!current) return;
-  const last = current[current.length - 1];
+function penMove(id, x, y, z) {
+  const stroke = pens[id];
+  if (!stroke) return;
+  const last = stroke[stroke.length - 1];
   const q = last && project(last);
-  if (!last || Math.hypot(q.x - x, q.y - y) > 2.5) current.push(unproject(x, y, z));
+  if (!last || Math.hypot(q.x - x, q.y - y) > 2.5) stroke.push(unproject(x, y, z));
 }
-function penUp() {
-  if (!current) return;
-  if (current.length >= 2) pending.push(current);
-  current = null;
+function penUp(id) {
+  const stroke = pens[id];
+  if (!stroke) return;
+  if (stroke.length >= 2) pending.push(stroke);
+  delete pens[id];
   penUpAt = performance.now();
 }
 
 // mouse / trackpad / pen tablet also draw (handy without a camera, too)
 let mouse = null;
-canvas.addEventListener('pointerdown', (e) => { mouse = { x: e.clientX, y: e.clientY, moved: 0 }; penDown(e.clientX, e.clientY, 0); });
+canvas.addEventListener('pointerdown', (e) => { mouse = { x: e.clientX, y: e.clientY, moved: 0 }; penDown('mouse', e.clientX, e.clientY, 0); });
 canvas.addEventListener('pointermove', (e) => {
   if (!mouse) return;
   mouse.moved += Math.hypot(e.clientX - mouse.x, e.clientY - mouse.y);
   mouse.x = e.clientX; mouse.y = e.clientY;
-  penMove(e.clientX, e.clientY, 0);
+  penMove('mouse', e.clientX, e.clientY, 0);
 });
 addEventListener('pointerup', (e) => {
   if (!mouse) return;
-  // a click (no drag) on a creature → cycle to the recognizer's next guess
   if (mouse.moved < 4) {
-    current = null;
-    const c = creatures.find((c) => c.box && e.clientX > c.box.x0 - 10 && e.clientX < c.box.x1 + 10 && e.clientY > c.box.y0 - 10 && e.clientY < c.box.y1 + 10);
-    if (c) { setLabel(c, (c.gi + 1) % c.guesses.length); addChip(c); }
-  } else penUp();
+    // a click (no drag): select a drawing. Click it again → the AI's next guess.
+    delete pens.mouse;
+    const c = creatureAt(e.clientX, e.clientY);
+    if (c && c === selected) { setLabel(c, (c.gi + 1) % c.guesses.length); addChip(c); }
+    select(c);
+  } else penUp('mouse');
   mouse = null;
 });
+function select(c) {
+  if (selected) selected.selected = false;
+  selected = c;
+  if (c) c.selected = true;
+}
 
 // ── naming: turn the waiting strokes into a creature ─────────────────────────
 function nameDrawing() {
@@ -95,18 +105,29 @@ function togglePaper() {
   document.body.classList.toggle('paper', style.dark);
   $('b-paper').classList.toggle('active', style.dark);
 }
+function togglePause() {
+  ui.paused = !ui.paused;
+  $('b-play').classList.toggle('paused', ui.paused);
+  document.body.classList.toggle('is-paused', ui.paused);
+  $('b-play').title = ui.paused ? 'Play (Space)' : 'Pause (Space)';
+}
 function undo() { if (pending.length) pending.pop(); else removeLast(); }
-function clear() { pending = []; current = null; clearAll(); }
+function clear() { pending = []; for (const k in pens) delete pens[k]; clearAll(); selected = null; }
+function deleteSelected() { if (selected) { remove(selected); selected = null; } }
 $('b-sight').onclick = toggleSight;
 $('b-paper').onclick = togglePaper;
+$('b-play').onclick = togglePause;
 $('b-undo').onclick = undo;
 $('b-clear').onclick = clear;
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); togglePause(); }
   if (k === 'v') toggleSight();
   if (k === 'p') togglePaper();
   if (k === 'z') undo();
   if (k === 'c') clear();
+  if (k === 'delete' || k === 'backspace') deleteSelected();
+  if (k === 'escape') select(null);
   if (k === 'h') document.body.classList.toggle('clean');
 });
 
@@ -147,7 +168,7 @@ loadRecognizer().catch((e) => console.warn('recognizer', e));
 
 // ── the loop ─────────────────────────────────────────────────────────────────
 let last = performance.now();
-let handWasPinching = false;
+const fistTimers = {};
 function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -155,7 +176,7 @@ function loop(now) {
 
   // 1. SEE
   updateVision(now);
-  const hand = sense.hand;
+  const hands = sense.hands;
   const A = sense.body && sense.body.anchors;
 
   // head-coupled parallax: the virtual eye follows your real eyes
@@ -163,21 +184,37 @@ function loop(now) {
   view.camX += (tx - view.camX) * Math.min(1, dt * 3);
   view.camY += (ty - view.camY) * Math.min(1, dt * 3);
 
-  // 2. DRAW with the hand: pinch = pen down
-  if (hand && hand.pinch) {
-    if (!handWasPinching) penDown(hand.cursor.x, hand.cursor.y, hand.z);
-    else penMove(hand.cursor.x, hand.cursor.y, hand.z);
-  } else if (handWasPinching) penUp();
-  handWasPinching = !!(hand && hand.pinch);
+  // 2. DRAW with each hand: pinch = pen down, open = pen up
+  for (const h of hands) {
+    if (h.pinch) {
+      if (!pens[h.key]) penDown(h.key, h.cursor.x, h.cursor.y, h.z);
+      else penMove(h.key, h.cursor.x, h.cursor.y, h.z);
+    } else penUp(h.key);
+  }
+  // a hand that vanished mid-stroke ends its stroke
+  for (const id in pens) if (id !== 'mouse' && !hands.some((h) => h.key === id)) penUp(id);
+
+  // DELETE with a fist: hold a fist over a drawing for a moment
+  for (const h of hands) {
+    const t = (fistTimers[h.key] ??= { c: null, time: 0, done: false });
+    if (!h.fist) t.done = false;              // open the hand to delete another one
+    const c = h.fist && !t.done ? creatureAt(h.centre.x, h.centre.y, 30) : null;
+    if (c && c === t.c) { t.time += dt; if (t.time > 0.35) { remove(c); t.c = null; t.time = 0; t.done = true; } }
+    else { t.c = c; t.time = 0; }
+    h.fistOn = t.c; h.fistProgress = t.time / 0.35;
+  }
 
   // 3. NAME the drawing once you've paused
-  if (pending.length && !current && now - penUpAt > WAIT) nameDrawing();
+  if (pending.length && !drawing() && now - penUpAt > WAIT) nameDrawing();
 
-  // 4. LIVE
-  updateCreatures(dt, { W, H, anchors: A, hand });
+  // 4. LIVE (unless paused)
+  tickDying(dt);
+  if (!ui.paused) {
+    updateCreatures(dt, { W, H, anchors: A, hands });
+    tickBoil(now);
+  }
 
   // 5. PAINT
-  tickBoil(now);
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, W, H);
   g.lineCap = g.lineJoin = 'round';
@@ -186,10 +223,11 @@ function loop(now) {
 
   // strokes not yet named: slightly breathing while the AI "watches"
   const waitingAlpha = 0.75 + 0.25 * Math.sin(now / 160);
+  const live = Object.values(pens);
   let box = null;
-  for (const s of [...pending, ...(current ? [current] : [])]) {
+  for (const s of [...pending, ...live]) {
     const pts = s.map(project);
-    drawLine(g, pts, s === current ? 1 : waitingAlpha);
+    drawLine(g, pts, live.includes(s) ? 1 : waitingAlpha);
     for (const p of pts) {
       box = box || { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
       box.x0 = Math.min(box.x0, p.x); box.x1 = Math.max(box.x1, p.x);
@@ -197,14 +235,28 @@ function loop(now) {
     }
   }
 
-  // the hand cursor: a ring when hovering, a dot when drawing; bigger = closer
-  if (hand) {
-    const r = 7 * (view.f / (view.f - hand.z));
-    g.strokeStyle = style.dark ? 'rgba(20,20,20,0.8)' : 'rgba(255,255,255,0.9)';
-    g.fillStyle = g.strokeStyle;
+  // hand cursors: a ring when hovering, a dot when drawing (bigger = closer),
+  // and a filling circle when a fist is deleting something
+  const ink = style.dark ? 'rgba(20,20,20,0.8)' : 'rgba(255,255,255,0.9)';
+  for (const h of hands) {
+    g.strokeStyle = g.fillStyle = ink;
     g.lineWidth = 1.5;
-    g.beginPath(); g.arc(hand.cursor.x, hand.cursor.y, hand.pinch ? 3.5 : r, 0, 7);
-    hand.pinch ? g.fill() : g.stroke();
+    if (h.fistOn) {
+      g.strokeStyle = 'rgba(255,120,110,0.95)';
+      g.beginPath(); g.arc(h.centre.x, h.centre.y, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, h.fistProgress)); g.stroke();
+      continue;
+    }
+    const r = 7 * (view.f / (view.f - h.z));
+    g.beginPath(); g.arc(h.cursor.x, h.cursor.y, h.pinch ? 3.5 : r, 0, 7);
+    h.pinch ? g.fill() : g.stroke();
+  }
+
+  // the selected drawing gets a dashed frame
+  if (selected && selected.box && creatures.includes(selected)) {
+    const b = selected.box;
+    g.setLineDash([4, 5]); g.strokeStyle = ink; g.lineWidth = 1;
+    g.strokeRect(b.x0 - 12, b.y0 - 12, b.x1 - b.x0 + 24, b.y1 - b.y0 + 24);
+    g.setLineDash([]);
   }
 
   // name chips that fade (always on, even when Sight is off)
@@ -231,7 +283,7 @@ function loop(now) {
   if (ui.sight) {
     drawSight(g, {
       sense, creatures, lastGuess, W, H,
-      pending: { box: pending.length || current ? box : null, waiting: !!current },
+      pending: { box, waiting: drawing() },
     });
   }
 }

@@ -89,3 +89,13 @@ body.paper #dock button.active { background: rgba(0, 0, 0, 0.09); }
 body.clean #dock, body.clean #brand, body.clean #hint { opacity: 0 !important; pointer-events: none; }
 
 @media (max-width: 520px) { #dock button span { display: none; } }
+
+/* play / pause */
+#b-play .i-play { display: none; }
+#b-play.paused .i-play { display: block; }
+#b-play.paused .i-pause { display: none; }
+#paused {
+  position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+  font-size: 12px; letter-spacing: 0.08em; color: var(--muted); opacity: 0; transition: opacity 0.3s ease; pointer-events: none;
+}
+body.is-paused #paused { opacity: 1; }
