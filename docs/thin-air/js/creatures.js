@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // creatures.js — drawings that come alive.
 //
-// Once you finish a drawing (👍) and the recognizer names it, it becomes a
+// Once you finish a drawing (by turning the pen off) and the recognizer names it, it becomes a
 // CREATURE: your own lines, plus a little brain and an effects layer.
 //
 //  • It lives WHERE YOU DREW IT. Your HAND never moves it: your hand only

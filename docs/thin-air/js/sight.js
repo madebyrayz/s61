@@ -19,7 +19,7 @@ const HAND_BONES = [
 ];
 const BODY_BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [7, 2], [2, 5], [5, 8]];
 const BODY_DOTS = [0, 2, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-const GESTURE = { fist: '✊ fist', point: '☝️ point', peace: '✌️ erase', thumb: '👍 finish', open: '🖐 open' };
+const GESTURE = { fist: '✊ fist', point: '☝️ point', peace: '✌️ erase', thumb: '👍 thumb', open: '🖐 open' };
 
 const C = { line: 'rgba(150, 220, 255, 0.8)', dim: 'rgba(150, 220, 255, 0.32)', text: 'rgba(240, 248, 255, 0.95)', warm: 'rgba(255, 216, 140, 0.95)' };
 const FONT = '500 10.5px "SF Mono", ui-monospace, Menlo, monospace';
@@ -93,7 +93,7 @@ export function drawSight(g, { sense, creatures, pendingBoxes }) {
   // ── unfinished drawings ──
   for (const { box, pen } of pendingBoxes) {
     g.setLineDash([3, 4]); g.strokeStyle = C.dim; brackets(g, box, 12); g.setLineDash([]);
-    tag(g, pen.on ? 'drawing · 👍 to finish' : 'paused · ✊ to resume · 👍 to finish', box.x0 - 12, box.y0 - 20, C.dim);
+    tag(g, 'drawing · ✊ pen off to bring it to life', box.x0 - 12, box.y0 - 20, C.dim);
   }
   g.restore();
 }

@@ -3,10 +3,9 @@
 //
 //   1. SEE      ask vision.js for hands (with gestures) and people
 //   2. PEN      turn gestures into pen actions, per person:
-//                 ✊ fist        pen on / pen off (toggle)
+//                 ✊ fist        pen on / pen off (pen off = bring it to life)
 //                 ☝️ point       draw from the index fingertip (while pen is on)
 //                 ✌️ two fingers erase
-//                 👍 thumbs up   finish: name the drawing, bring it to life
 //   3. LIVE     let every creature think and move (creatures.js + effects.js)
 //   4. PAINT    clear the canvas and draw ink, creatures and the overlay
 // ─────────────────────────────────────────────────────────────────────────────
@@ -234,22 +233,19 @@ function loop(now) {
     const st = (handState[h.id] ??= { shape: null, fired: false });
     if (st.shape !== h.shape) { st.shape = h.shape; st.fired = false; }
 
-    // ✊ held a moment: toggle the pen (once per fist)
+    // ✊ held a moment: pen on — or pen off, which brings the drawing to life
     if (h.shape === 'fist' && !st.fired && h.held > 0.3) {
       st.fired = true;
-      pen.on = !pen.on;
       strokeEnd(pen, h.id);
-      ripples.push({ x: h.centre.x, y: h.centre.y, t: now, ci: pen.ci, on: pen.on });
-      showPill(pen.on ? '✎  Pen on · point ☝️ to draw' : 'Pen off · ✊ to resume · 👍 to finish', pen.ci);
-    }
-    // 👍 held a moment: finish the drawing
-    if (h.shape === 'thumb' && !st.fired && h.held > 0.35) {
-      st.fired = true;
-      const had = pen.strokes.length || Object.keys(pen.live).length;
-      finish(pen);
-      pen.on = false;
-      ripples.push({ x: h.centre.x, y: h.centre.y, t: now, ci: pen.ci, on: true, big: true });
-      showPill(had ? '✨  Bringing it to life' : 'Nothing to finish yet · ✊ then ☝️ to draw', pen.ci);
+      pen.on = !pen.on;
+      let text = '✎  Pen on · point ☝️ to draw';
+      if (!pen.on) {
+        const had = pen.strokes.length > 0;
+        finish(pen);
+        text = had ? '✨  Pen off · bringing it to life' : 'Pen off';
+      }
+      ripples.push({ x: h.centre.x, y: h.centre.y, t: now, ci: pen.ci, on: pen.on, big: !pen.on });
+      showPill(text, pen.ci);
     }
     // ☝️ with the pen on: draw. Any other shape lifts the pen.
     if (h.shape === 'point' && pen.on) {
@@ -277,7 +273,7 @@ function loop(now) {
 
   drawCreatures(g);
 
-  // unfinished drawings: breathing gently until 👍
+  // unfinished drawings: breathing gently until the pen goes off
   const pendingBoxes = [];
   for (const pen of Object.values(pens)) {
     const liveStrokes = Object.values(pen.live);
@@ -324,7 +320,7 @@ function loop(now) {
 }
 
 // Cursor: hollow ring = pen off · dot = pen on · dashed circle = eraser ·
-// a ring filling up = a fist / thumbs up being held
+// a ring filling up = a fist being held
 function drawCursor(h) {
   const col = inkColour(h.pen.ci);
   g.strokeStyle = g.fillStyle = col;
@@ -335,12 +331,11 @@ function drawCursor(h) {
     drawTag('erasing', x, y + ERASER + 16, col);
     return;
   }
-  if (h.shape === 'fist' || h.shape === 'thumb') {
-    const need = h.shape === 'fist' ? 0.3 : 0.35, k = Math.min(1, h.held / need), c = h.centre;
+  if (h.shape === 'fist') {
+    const k = Math.min(1, h.held / 0.3), c = h.centre;
     g.globalAlpha = 0.3; g.beginPath(); g.arc(c.x, c.y, 18, 0, 7); g.stroke(); g.globalAlpha = 1;
     g.beginPath(); g.arc(c.x, c.y, 18, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2); g.stroke();
-    const label = h.shape === 'fist' ? (k < 1 ? (h.pen.on ? 'pen off…' : 'pen on…') : (h.pen.on ? 'pen on' : 'pen off'))
-      : (k < 1 ? 'finish…' : 'brought to life');
+    const label = k < 1 ? (h.pen.on ? 'pen off…' : 'pen on…') : (h.pen.on ? 'pen on' : 'pen off');
     drawTag(label, c.x, c.y + 38, col);
     return;
   }
