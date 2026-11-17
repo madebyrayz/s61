@@ -34,9 +34,20 @@ export function unproject(x, y, z) {
 
 // ── ink style ────────────────────────────────────────────────────────────────
 export const style = {
-  dark: false,    // false = white ink (reads on any video), true = black ink
+  dark: false,    // false = light ink (reads on any video), true = paper mode, dark ink
   width: 2.6,     // line thickness in px
 };
+
+// One ink colour per person (slot 0 = first person, 1 = second…).
+// Each has a version for the camera (light) and for paper mode (dark).
+const INKS = [
+  { light: '#ffffff', dark: '#141414' },   // white / black
+  { light: '#ff9b8a', dark: '#d2442f' },   // coral
+  { light: '#8fd8ff', dark: '#1f7fbf' },   // sky
+  { light: '#ffd27a', dark: '#b88400' },   // amber
+  { light: '#c4b2ff', dark: '#6a4fd0' },   // lavender
+];
+export const inkColour = (ci = 0) => INKS[ci % INKS.length][style.dark ? 'dark' : 'light'];
 
 // "Boil": hand-drawn animation re-traces every frame slightly differently, so
 // lines shimmer. We fake it by nudging each point by a tiny amount that changes
@@ -48,7 +59,7 @@ const jitter = (i, k) => Math.sin(i * 12.9898 + boilSeed * 78.233 + k) * 0.6;
 // Draw one projected stroke (a list of screen points {x,y,s}) as a smooth line.
 // We draw it twice: a soft wide "shadow" underneath so the line reads on any
 // background, then the ink itself on top.
-export function drawLine(g, pts, alpha = 1, widthMul = 1) {
+export function drawLine(g, pts, alpha = 1, widthMul = 1, ci = 0) {
   if (pts.length < 2) return;
   let sAvg = 0;
   for (const p of pts) sAvg += p.s;
@@ -72,7 +83,7 @@ export function drawLine(g, pts, alpha = 1, widthMul = 1) {
   g.lineWidth = w + 3;
   g.stroke(path);
   g.globalAlpha = alpha;
-  g.strokeStyle = style.dark ? '#111' : '#fff';
+  g.strokeStyle = inkColour(ci);
   g.lineWidth = w;
   g.stroke(path);
   g.globalAlpha = 1;

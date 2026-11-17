@@ -1,25 +1,27 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // main.js — the conductor. Starts the camera, then runs one loop, ~60× a second:
 //
-//   1. SEE      ask vision.js where your hand and body are
-//   2. DRAW     if you are pinching, add a point to the current line
-//   3. NAME     if you stopped drawing a moment ago, ask recognize.js what it is
-//   4. LIVE     let every creature think and move (creatures.js)
-//   5. PAINT    clear the canvas and draw ink, creatures, and the AI overlay
+//   1. SEE      ask vision.js for hands (with gestures) and people
+//   2. PEN      turn gestures into pen actions, per person:
+//                 ✊ fist        pen on / pen off (toggle)
+//                 ☝️ point       draw from the index fingertip (while pen is on)
+//                 ✌️ two fingers erase
+//                 👍 thumbs up   finish: name the drawing, bring it to life
+//   3. LIVE     let every creature think and move (creatures.js + effects.js)
+//   4. PAINT    clear the canvas and draw ink, creatures and the overlay
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { sense, loadVision, updateVision } from './vision.js';
 import { loadRecognizer, classify, setFavourites } from './recognize.js';
-import { view, project, unproject, drawLine, style, tickBoil } from './ink.js';
-import { creatures, spawn, setLabel, updateCreatures, drawCreatures, removeLast, clearAll, remove, creatureAt, tickDying, FAVOURITES } from './creatures.js';
-import { drawSight } from './sight.js';
+import { view, project, unproject, drawLine, style, tickBoil, inkColour } from './ink.js';
+import { creatures, spawn, setLabel, updateCreatures, drawCreatures, removeLast, clearAll, remove, creatureAt, tickDying, eraseCreatures, FAVOURITES } from './creatures.js';
+import { drawSight, updatePanel } from './sight.js';
 
 const $ = (id) => document.getElementById(id);
 const video = $('cam'), canvas = $('ink'), g = canvas.getContext('2d');
 
 // ── canvas size ──────────────────────────────────────────────────────────────
-// A retina screen has 2 real pixels per CSS pixel. We cap at 1.5 to keep the
-// laptop cool; lines still look crisp.
+// Retina screens have 2 pixels per CSS pixel; we cap at 1.5 to keep cool.
 let W = 0, H = 0, dpr = 1;
 function resize() {
   dpr = Math.min(1.5, devicePixelRatio || 1);
@@ -31,54 +33,98 @@ addEventListener('resize', resize);
 resize();
 
 // ── app state ────────────────────────────────────────────────────────────────
-const ui = { sight: false, paused: false };
-let pending = [];        // finished strokes waiting to be recognised (3D points)
-const pens = {};         // strokes being drawn right now, one per pen: { mouse: [...], left: [...], right: [...] }
-let penUpAt = 0;         // when a pen was last lifted
+const ui = { sight: false, paused: false, parallax: false, erase: false };
 let lastGuess = null;    // newest top-5 guesses (for the overlay)
-let selected = null;     // creature picked with the mouse (Delete removes it)
-const chips = [];        // little name labels that fade after a recognition
-const WAIT = 1100;       // ms of no drawing before we "name" the drawing
-const drawing = () => Object.keys(pens).length > 0;
+let selected = null;     // drawing picked with the mouse (Delete removes it)
+const chips = [];        // name labels that fade in after a drawing comes alive
+const ERASER = 30;       // eraser radius in px
 
-// ── pens: the mouse and each hand are separate pens ──────────────────────────
-function penDown(id, x, y, z) {
-  pens[id] = [];
-  penMove(id, x, y, z);
+// Each PERSON has their own pen and their own unfinished drawing.
+// Person 0 = "no body tracked" (e.g. only a hand in view) and the mouse.
+const pens = {};
+function penOf(personId) {
+  return (pens[personId] ??= { on: false, strokes: [], live: {}, ci: 0, lastDraw: 0 });
 }
-function penMove(id, x, y, z) {
-  const stroke = pens[id];
-  if (!stroke) return;
-  const last = stroke[stroke.length - 1];
+// colour slot of a person (0 white, 1 coral, 2 sky …)
+const slotOf = (personId) => sense.people.find((p) => p.id === personId)?.slot ?? 0;
+
+// ── drawing primitives ───────────────────────────────────────────────────────
+function strokeStart(pen, key, x, y, z) {
+  const s = [];
+  s.ci = pen.ci;
+  pen.live[key] = s;
+  strokeAdd(pen, key, x, y, z);
+}
+function strokeAdd(pen, key, x, y, z) {
+  const s = pen.live[key];
+  if (!s) return;
+  const last = s[s.length - 1];
   const q = last && project(last);
-  if (!last || Math.hypot(q.x - x, q.y - y) > 2.5) stroke.push(unproject(x, y, z));
+  if (!last || Math.hypot(q.x - x, q.y - y) > 2.5) s.push(unproject(x, y, z));
+  pen.lastDraw = performance.now();
 }
-function penUp(id) {
-  const stroke = pens[id];
-  if (!stroke) return;
-  if (stroke.length >= 2) pending.push(stroke);
-  delete pens[id];
-  penUpAt = performance.now();
+function strokeEnd(pen, key) {
+  const s = pen.live[key];
+  if (!s) return;
+  if (s.length >= 2) pen.strokes.push(s);
+  delete pen.live[key];
 }
 
-// mouse / trackpad / pen tablet also draw (handy without a camera, too)
+// Finish: name the drawing and turn it into a creature.
+function finish(pen) {
+  for (const k in pen.live) strokeEnd(pen, k);
+  if (!pen.strokes.length) return;
+  const flat = pen.strokes.map((s) => s.map(project));    // what you see
+  const guesses = classify(flat);
+  lastGuess = guesses;
+  const c = spawn(pen.strokes, guesses.length ? guesses : [{ label: 'doodle', p: 0 }], pen.ci);
+  chips.push({ c, t: performance.now() });
+  pen.strokes = [];
+}
+
+// Erase: rub out unfinished lines (anyone's) and living drawings.
+function eraseAt(x, y, r = ERASER) {
+  for (const pen of Object.values(pens)) {
+    const out = [];
+    for (const s of pen.strokes) {
+      let run = [];
+      run.ci = s.ci;
+      for (const p of s) {
+        const q = project(p);
+        if (Math.hypot(q.x - x, q.y - y) < r) { if (run.length > 1) out.push(run); run = []; run.ci = s.ci; }
+        else run.push(p);
+      }
+      if (run.length > 1) out.push(run);
+    }
+    pen.strokes = out;
+  }
+  eraseCreatures(x, y, r);
+}
+
+// ── mouse / trackpad: always "pen on"; ✨ button or Enter finishes ────────────
 let mouse = null;
-canvas.addEventListener('pointerdown', (e) => { mouse = { x: e.clientX, y: e.clientY, moved: 0 }; penDown('mouse', e.clientX, e.clientY, 0); });
+canvas.addEventListener('pointerdown', (e) => {
+  mouse = { x: e.clientX, y: e.clientY, moved: 0 };
+  if (ui.erase) eraseAt(e.clientX, e.clientY);
+  else { const pen = penOf(0); pen.ci = 0; strokeStart(pen, 'mouse', e.clientX, e.clientY, 0); }
+});
 canvas.addEventListener('pointermove', (e) => {
   if (!mouse) return;
   mouse.moved += Math.hypot(e.clientX - mouse.x, e.clientY - mouse.y);
   mouse.x = e.clientX; mouse.y = e.clientY;
-  penMove('mouse', e.clientX, e.clientY, 0);
+  if (ui.erase) eraseAt(e.clientX, e.clientY);
+  else strokeAdd(penOf(0), 'mouse', e.clientX, e.clientY, 0);
 });
 addEventListener('pointerup', (e) => {
   if (!mouse) return;
-  if (mouse.moved < 4) {
-    // a click (no drag): select a drawing. Click it again → the AI's next guess.
-    delete pens.mouse;
+  const pen = penOf(0);
+  if (mouse.moved < 4 && !ui.erase) {
+    // a click: select a drawing; click it again → the AI's next guess
+    delete pen.live.mouse;
     const c = creatureAt(e.clientX, e.clientY);
-    if (c && c === selected) { setLabel(c, (c.gi + 1) % c.guesses.length); addChip(c); }
+    if (c && c === selected) { setLabel(c, (c.gi + 1) % c.guesses.length); chips.push({ c, t: performance.now() }); }
     select(c);
-  } else penUp('mouse');
+  } else strokeEnd(pen, 'mouse');
   mouse = null;
 });
 function select(c) {
@@ -87,46 +133,40 @@ function select(c) {
   if (c) c.selected = true;
 }
 
-// ── naming: turn the waiting strokes into a creature ─────────────────────────
-function nameDrawing() {
-  const flat = pending.map((s) => s.map(project));   // what you see on screen
-  const guesses = classify(flat);
-  lastGuess = guesses;
-  const c = spawn(pending, guesses.length ? guesses : [{ label: 'doodle', p: 0 }]);
-  addChip(c);
-  pending = [];
-}
-function addChip(c) { chips.push({ c, t: performance.now() }); }
-
 // ── buttons & keys ───────────────────────────────────────────────────────────
-function toggleSight() { ui.sight = !ui.sight; $('b-sight').classList.toggle('active', ui.sight); }
-function togglePaper() {
-  style.dark = !style.dark;
-  document.body.classList.toggle('paper', style.dark);
-  $('b-paper').classList.toggle('active', style.dark);
-}
+const toggle = (key, id, cls) => { ui[key] = !ui[key]; $(id).classList.toggle('active', ui[key]); if (cls) document.body.classList.toggle(cls, ui[key]); };
+function toggleSight() { toggle('sight', 'b-sight', 'sight-on'); }
+function togglePaper() { style.dark = !style.dark; document.body.classList.toggle('paper', style.dark); $('b-paper').classList.toggle('active', style.dark); }
 function togglePause() {
   ui.paused = !ui.paused;
   $('b-play').classList.toggle('paused', ui.paused);
   document.body.classList.toggle('is-paused', ui.paused);
-  $('b-play').title = ui.paused ? 'Play (Space)' : 'Pause (Space)';
 }
-function undo() { if (pending.length) pending.pop(); else removeLast(); }
-function clear() { pending = []; for (const k in pens) delete pens[k]; clearAll(); selected = null; }
-function deleteSelected() { if (selected) { remove(selected); selected = null; } }
+function toggleErase() { toggle('erase', 'b-erase', 'erasing'); }
+function finishAll() { for (const pen of Object.values(pens)) finish(pen); }
+function undo() {
+  const pen = Object.values(pens).filter((p) => p.strokes.length).sort((a, b) => b.lastDraw - a.lastDraw)[0];
+  if (pen) pen.strokes.pop(); else removeLast();
+}
+function clear() { for (const k in pens) delete pens[k]; clearAll(); selected = null; }
 $('b-sight').onclick = toggleSight;
 $('b-paper').onclick = togglePaper;
 $('b-play').onclick = togglePause;
+$('b-erase').onclick = toggleErase;
+$('b-finish').onclick = finishAll;
 $('b-undo').onclick = undo;
 $('b-clear').onclick = clear;
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (k === ' ') { e.preventDefault(); togglePause(); }
+  if (k === 'enter') finishAll();
   if (k === 'v') toggleSight();
   if (k === 'p') togglePaper();
+  if (k === 'e') toggleErase();
+  if (k === 'd') ui.parallax = !ui.parallax;
   if (k === 'z') undo();
   if (k === 'c') clear();
-  if (k === 'delete' || k === 'backspace') deleteSelected();
+  if (k === 'delete' || k === 'backspace') { if (selected) { remove(selected); selected = null; } }
   if (k === 'escape') select(null);
   if (k === 'h') document.body.classList.toggle('clean');
 });
@@ -137,19 +177,14 @@ $('go').onclick = async () => {
   btn.disabled = true;
   try {
     status.textContent = 'asking for the camera…';
-    // 960×540 is plenty for tracking and keeps the GPU cool
     video.srcObject = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 960 }, height: { ideal: 540 }, facingMode: 'user' }, audio: false,
     });
     await video.play();
-    await Promise.all([
-      loadVision(video, (s) => (status.textContent = s + '…')),
-      loadRecognizer(),
-    ]);
+    await Promise.all([loadVision(video, (s) => (status.textContent = s + '…')), loadRecognizer()]);
   } catch (err) {
     console.error(err);
     status.textContent = 'Camera or models unavailable (' + (err.message || err.name) + '). You can still draw with the mouse.';
-    loadRecognizer().catch(() => {});
     setTimeout(() => $('start').classList.add('gone'), 2600);
     showUI();
     return;
@@ -157,18 +192,26 @@ $('go').onclick = async () => {
   $('start').classList.add('gone');
   showUI();
 };
-function showUI() {
-  $('dock').classList.add('on');
-  $('hint').classList.add('on');
-  setTimeout(() => $('hint').classList.remove('on'), 9000);
-}
+function showUI() { document.body.classList.add('running'); }
 setFavourites(FAVOURITES);
-// load the small recognizer straight away, so mouse drawing works before the camera
 loadRecognizer().catch((e) => console.warn('recognizer', e));
 
 // ── the loop ─────────────────────────────────────────────────────────────────
 let last = performance.now();
-const fistTimers = {};
+const handState = {};    // per hand: has its current gesture already fired?
+const ripples = [];      // expanding rings: feedback when a gesture fires
+
+// The pill at the top: a short message whenever the pen changes state.
+let pillTimer = 0;
+function showPill(text, ci) {
+  const el = $('pill');
+  el.textContent = text;
+  el.style.setProperty('--ink', inkColour(ci));
+  el.classList.add('on');
+  clearTimeout(pillTimer);
+  pillTimer = setTimeout(() => el.classList.remove('on'), 1800);
+}
+
 function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -177,117 +220,165 @@ function loop(now) {
   // 1. SEE
   updateVision(now);
   const hands = sense.hands;
-  const A = sense.body && sense.body.anchors;
 
-  // head-coupled parallax: the virtual eye follows your real eyes
+  // depth parallax (D key): the virtual eye follows the first face
+  const A = ui.parallax && sense.people[0]?.anchors;
   const tx = A ? (A.eyes.x - W / 2) * 0.6 : 0, ty = A ? (A.eyes.y - H * 0.4) * 0.4 : 0;
   view.camX += (tx - view.camX) * Math.min(1, dt * 3);
   view.camY += (ty - view.camY) * Math.min(1, dt * 3);
 
-  // 2. DRAW with each hand: pinch = pen down, open = pen up
+  // 2. PEN — gestures → actions, for each hand
   for (const h of hands) {
-    if (h.pinch) {
-      if (!pens[h.key]) penDown(h.key, h.cursor.x, h.cursor.y, h.z);
-      else penMove(h.key, h.cursor.x, h.cursor.y, h.z);
-    } else penUp(h.key);
+    const pen = penOf(h.person);
+    pen.ci = slotOf(h.person);
+    const st = (handState[h.id] ??= { shape: null, fired: false });
+    if (st.shape !== h.shape) { st.shape = h.shape; st.fired = false; }
+
+    // ✊ held a moment: toggle the pen (once per fist)
+    if (h.shape === 'fist' && !st.fired && h.held > 0.3) {
+      st.fired = true;
+      pen.on = !pen.on;
+      strokeEnd(pen, h.id);
+      ripples.push({ x: h.centre.x, y: h.centre.y, t: now, ci: pen.ci, on: pen.on });
+      showPill(pen.on ? '✎  Pen on · point ☝️ to draw' : 'Pen off · ✊ to resume · 👍 to finish', pen.ci);
+    }
+    // 👍 held a moment: finish the drawing
+    if (h.shape === 'thumb' && !st.fired && h.held > 0.35) {
+      st.fired = true;
+      const had = pen.strokes.length || Object.keys(pen.live).length;
+      finish(pen);
+      pen.on = false;
+      ripples.push({ x: h.centre.x, y: h.centre.y, t: now, ci: pen.ci, on: true, big: true });
+      showPill(had ? '✨  Bringing it to life' : 'Nothing to finish yet · ✊ then ☝️ to draw', pen.ci);
+    }
+    // ☝️ with the pen on: draw. Any other shape lifts the pen.
+    if (h.shape === 'point' && pen.on) {
+      if (!pen.live[h.id]) strokeStart(pen, h.id, h.cursor.x, h.cursor.y, h.z);
+      else strokeAdd(pen, h.id, h.cursor.x, h.cursor.y, h.z);
+    } else strokeEnd(pen, h.id);
+    // ✌️ erase
+    if (h.shape === 'peace') eraseAt(h.cursor.x, h.cursor.y);
+    h.pen = pen;
   }
-  // a hand that vanished mid-stroke ends its stroke
-  for (const id in pens) if (id !== 'mouse' && !hands.some((h) => h.key === id)) penUp(id);
+  // a hand that left the picture ends its line
+  for (const pen of Object.values(pens)) for (const k in pen.live) if (k !== 'mouse' && !hands.some((h) => String(h.id) === k)) strokeEnd(pen, k);
 
-  // DELETE with a fist: hold a fist over a drawing for a moment
-  for (const h of hands) {
-    const t = (fistTimers[h.key] ??= { c: null, time: 0, done: false });
-    if (!h.fist) t.done = false;              // open the hand to delete another one
-    const c = h.fist && !t.done ? creatureAt(h.centre.x, h.centre.y, 30) : null;
-    if (c && c === t.c) { t.time += dt; if (t.time > 0.35) { remove(c); t.c = null; t.time = 0; t.done = true; } }
-    else { t.c = c; t.time = 0; }
-    h.fistOn = t.c; h.fistProgress = t.time / 0.35;
-  }
-
-  // 3. NAME the drawing once you've paused
-  if (pending.length && !drawing() && now - penUpAt > WAIT) nameDrawing();
-
-  // 4. LIVE (unless paused)
+  // 3. LIVE
   tickDying(dt);
   if (!ui.paused) {
-    updateCreatures(dt, { W, H, anchors: A, hands });
+    updateCreatures(dt, { W, H, people: sense.people, hands });
     tickBoil(now);
   }
 
-  // 5. PAINT
+  // 4. PAINT
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, W, H);
   g.lineCap = g.lineJoin = 'round';
 
   drawCreatures(g);
 
-  // strokes not yet named: slightly breathing while the AI "watches"
-  const waitingAlpha = 0.75 + 0.25 * Math.sin(now / 160);
-  const live = Object.values(pens);
-  let box = null;
-  for (const s of [...pending, ...live]) {
-    const pts = s.map(project);
-    drawLine(g, pts, live.includes(s) ? 1 : waitingAlpha);
-    for (const p of pts) {
-      box = box || { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
-      box.x0 = Math.min(box.x0, p.x); box.x1 = Math.max(box.x1, p.x);
-      box.y0 = Math.min(box.y0, p.y); box.y1 = Math.max(box.y1, p.y);
+  // unfinished drawings: breathing gently until 👍
+  const pendingBoxes = [];
+  for (const pen of Object.values(pens)) {
+    const liveStrokes = Object.values(pen.live);
+    const all = [...pen.strokes, ...liveStrokes];
+    if (!all.length) continue;
+    let box = null;
+    for (const s of all) {
+      const pts = s.map(project);
+      drawLine(g, pts, liveStrokes.includes(s) ? 1 : 0.8 + 0.15 * Math.sin(now / 300), 1, s.ci ?? pen.ci);
+      for (const p of pts) {
+        box = box || { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+        box.x0 = Math.min(box.x0, p.x); box.x1 = Math.max(box.x1, p.x);
+        box.y0 = Math.min(box.y0, p.y); box.y1 = Math.max(box.y1, p.y);
+      }
     }
+    pendingBoxes.push({ box, pen });
   }
 
-  // hand cursors: a ring when hovering, a dot when drawing (bigger = closer),
-  // and a filling circle when a fist is deleting something
-  const ink = style.dark ? 'rgba(20,20,20,0.8)' : 'rgba(255,255,255,0.9)';
-  for (const h of hands) {
-    g.strokeStyle = g.fillStyle = ink;
-    g.lineWidth = 1.5;
-    if (h.fistOn) {
-      g.strokeStyle = 'rgba(255,120,110,0.95)';
-      g.beginPath(); g.arc(h.centre.x, h.centre.y, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, h.fistProgress)); g.stroke();
-      continue;
-    }
-    const r = 7 * (view.f / (view.f - h.z));
-    g.beginPath(); g.arc(h.cursor.x, h.cursor.y, h.pinch ? 3.5 : r, 0, 7);
-    h.pinch ? g.fill() : g.stroke();
+  // gesture ripples
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const r = ripples[i], k = (now - r.t) / 600;
+    if (k > 1) { ripples.splice(i, 1); continue; }
+    g.strokeStyle = inkColour(r.ci); g.lineWidth = 2 * (1 - k);
+    g.globalAlpha = 1 - k;
+    g.beginPath(); g.arc(r.x, r.y, 18 + k * (r.big ? 90 : 50), 0, 7); g.stroke();
+    if (!r.on) { g.beginPath(); g.moveTo(r.x - 10, r.y - 10); g.lineTo(r.x + 10, r.y + 10); g.stroke(); }
+    g.globalAlpha = 1;
   }
+
+  // hand cursors in each person's colour
+  for (const h of hands) if (h.pen) drawCursor(h);
 
   // the selected drawing gets a dashed frame
   if (selected && selected.box && creatures.includes(selected)) {
     const b = selected.box;
-    g.setLineDash([4, 5]); g.strokeStyle = ink; g.lineWidth = 1;
+    g.setLineDash([4, 5]); g.strokeStyle = inkColour(selected.ci); g.lineWidth = 1;
     g.strokeRect(b.x0 - 12, b.y0 - 12, b.x1 - b.x0 + 24, b.y1 - b.y0 + 24);
     g.setLineDash([]);
   }
 
-  // name chips that fade (always on, even when Sight is off)
+  drawChips(now);
+  if (ui.sight) drawSight(g, { sense, creatures, pendingBoxes });
+  updatePanel(now, { sense, lastGuess, show: ui.sight });
+}
+
+// Cursor: hollow ring = pen off · dot = pen on · dashed circle = eraser ·
+// a ring filling up = a fist / thumbs up being held
+function drawCursor(h) {
+  const col = inkColour(h.pen.ci);
+  g.strokeStyle = g.fillStyle = col;
+  g.lineWidth = 1.5;
+  const { x, y } = h.cursor;
+  if (h.shape === 'peace') {
+    g.setLineDash([3, 4]); g.beginPath(); g.arc(x, y, ERASER, 0, 7); g.stroke(); g.setLineDash([]);
+    drawTag('erasing', x, y + ERASER + 16, col);
+    return;
+  }
+  if (h.shape === 'fist' || h.shape === 'thumb') {
+    const need = h.shape === 'fist' ? 0.3 : 0.35, k = Math.min(1, h.held / need), c = h.centre;
+    g.globalAlpha = 0.3; g.beginPath(); g.arc(c.x, c.y, 18, 0, 7); g.stroke(); g.globalAlpha = 1;
+    g.beginPath(); g.arc(c.x, c.y, 18, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2); g.stroke();
+    const label = h.shape === 'fist' ? (k < 1 ? (h.pen.on ? 'pen off…' : 'pen on…') : (h.pen.on ? 'pen on' : 'pen off'))
+      : (k < 1 ? 'finish…' : 'brought to life');
+    drawTag(label, c.x, c.y + 38, col);
+    return;
+  }
+  if (h.pen.on) {
+    // pen on: a solid dot on the fingertip; while pointing (= drawing) it has
+    // a soft halo; otherwise a ring says "pen is up, point to draw"
+    g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill();
+    if (h.shape === 'point') { g.globalAlpha = 0.25; g.beginPath(); g.arc(x, y, 9, 0, 7); g.fill(); g.globalAlpha = 1; }
+    else { g.globalAlpha = 0.6; g.setLineDash([2, 3]); g.beginPath(); g.arc(x, y, 11, 0, 7); g.stroke(); g.setLineDash([]); g.globalAlpha = 1; drawTag('pen up', x, y + 28, col); }
+  } else {
+    g.globalAlpha = 0.7; g.beginPath(); g.arc(x, y, 8, 0, 7); g.stroke(); g.globalAlpha = 1;
+  }
+}
+
+function drawTag(text, x, y, col) {
+  g.font = '500 11px Inter, ui-sans-serif, system-ui, sans-serif';
+  g.textAlign = 'center';
+  const w = g.measureText(text).width + 14;
+  g.fillStyle = style.dark ? 'rgba(255,255,255,0.75)' : 'rgba(16,18,22,0.55)';
+  g.beginPath(); g.roundRect(x - w / 2, y - 12, w, 18, 9); g.fill();
+  g.fillStyle = style.dark ? '#111' : col;
+  g.fillText(text, x, y + 1);
+}
+
+// name chips that fade after a drawing comes alive (when Sight is off)
+function drawChips(now) {
   for (let i = chips.length - 1; i >= 0; i--) {
     const { c, t } = chips[i];
     const age = (now - t) / 1000;
     if (age > 2.6 || !creatures.includes(c)) { chips.splice(i, 1); continue; }
-    if (ui.sight || !c.box) continue;
-    const a = Math.min(1, age * 4) * Math.min(1, (2.6 - age) * 2);
-    g.globalAlpha = a;
-    g.font = '500 13px Inter, ui-sans-serif, system-ui, sans-serif';
-    g.textAlign = 'center';
-    const label = c.label.replace(/_/g, ' ');
-    const x = (c.box.x0 + c.box.x1) / 2, y = c.box.y0 - 14 - age * 6;
-    const w = g.measureText(label).width + 20;
-    g.fillStyle = style.dark ? 'rgba(255,255,255,0.75)' : 'rgba(20,22,26,0.5)';
-    g.beginPath(); g.roundRect(x - w / 2, y - 15, w, 22, 11); g.fill();
-    g.fillStyle = style.dark ? '#111' : '#fff';
-    g.fillText(label, x, y + 1);
+    if (ui.sight || !c.box || !isFinite(c.box.x0)) continue;
+    g.globalAlpha = Math.min(1, age * 4) * Math.min(1, (2.6 - age) * 2);
+    drawTag(c.label.replace(/_/g, ' '), (c.box.x0 + c.box.x1) / 2, c.box.y0 - 16 - age * 6, inkColour(c.ci));
     g.globalAlpha = 1;
   }
-
-  // what the AI sees
-  if (ui.sight) {
-    drawSight(g, {
-      sense, creatures, lastGuess, W, H,
-      pending: { box, waiting: drawing() },
-    });
-  }
 }
+
 requestAnimationFrame(loop);
 
 // handy for experimenting in the browser console: window.thinAir
-window.thinAir = { sense, creatures, view, spawn, classify };
+window.thinAir = { sense, creatures, view, spawn, classify, pens, finishAll };

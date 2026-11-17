@@ -57,14 +57,6 @@ body.paper #brand { color: rgba(20, 20, 22, 0.5); }
 }
 #go:disabled { opacity: 0.5; cursor: default; }
 
-#hint {
-  position: fixed; left: 0; right: 0; bottom: 84px; text-align: center;
-  font-size: 12px; letter-spacing: 0.01em; color: var(--muted);
-  pointer-events: none; transition: opacity 1s ease; opacity: 0;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
-}
-#hint.on { opacity: 1; }
-body.paper #hint { color: rgba(20, 20, 22, 0.55); text-shadow: none; }
 
 /* bottom dock */
 #dock {
@@ -72,7 +64,7 @@ body.paper #hint { color: rgba(20, 20, 22, 0.55); text-shadow: none; }
   display: flex; align-items: center; gap: 2px; padding: 5px; border-radius: 999px;
   opacity: 0; transition: opacity 0.6s ease;
 }
-#dock.on { opacity: 1; }
+body.running #dock { opacity: 1; }
 #dock button {
   display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px;
   border: 0; border-radius: 999px; background: transparent; color: var(--text);
@@ -86,7 +78,7 @@ body.paper #dock button.active { background: rgba(0, 0, 0, 0.09); }
 #dock svg .fill { fill: currentColor; stroke: none; }
 #dock .sep { width: 1px; height: 18px; background: var(--glass-line); margin: 0 4px; }
 
-body.clean #dock, body.clean #brand, body.clean #hint { opacity: 0 !important; pointer-events: none; }
+body.clean #dock, body.clean #brand, body.clean #legend, body.clean #sight-panel { opacity: 0 !important; pointer-events: none; }
 
 @media (max-width: 520px) { #dock button span { display: none; } }
 
@@ -99,3 +91,56 @@ body.clean #dock, body.clean #brand, body.clean #hint { opacity: 0 !important; p
   font-size: 12px; letter-spacing: 0.08em; color: var(--muted); opacity: 0; transition: opacity 0.3s ease; pointer-events: none;
 }
 body.is-paused #paused { opacity: 1; }
+
+/* gesture list (start card + legend) */
+.gestures { list-style: none; margin: 0; padding: 0; }
+.gestures li { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text); }
+.gestures li span { width: 20px; text-align: center; font-size: 15px; }
+#start .gestures { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin: -6px auto 22px; width: fit-content; text-align: left; }
+#legend {
+  position: fixed; left: 18px; bottom: 22px; padding: 12px 16px 12px 12px; border-radius: 16px;
+  display: grid; gap: 7px; opacity: 0; transition: opacity 0.6s ease;
+}
+body.running #legend { opacity: 1; }
+#legend li { font-size: 12px; color: var(--muted); }
+
+/* AI sight card */
+#sight-panel {
+  position: fixed; top: 16px; right: 16px; width: 248px; padding: 14px; border-radius: 18px;
+  font-size: 12px; color: var(--text);
+  opacity: 0; transform: translateY(-6px); pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+body.sight-on #sight-panel { opacity: 1; transform: none; pointer-events: auto; }
+#sight-panel header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+#sight-panel header b { font-weight: 600; font-size: 12.5px; letter-spacing: -0.01em; }
+#sp-status { display: flex; gap: 10px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+#sp-status span { display: flex; align-items: center; gap: 5px; }
+#sp-status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.35; }
+#sp-status i.on { background: #7be3a4; opacity: 1; }
+#sight-panel small { display: block; font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.sp-model { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+#sp-input { width: 72px; height: 72px; border-radius: 10px; background: #000; image-rendering: pixelated; flex: none; border: 1px solid var(--glass-line); }
+.sp-model p { margin: 0; font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+#sp-guesses { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+#sp-guesses li { display: grid; grid-template-columns: 1fr 56px 32px; align-items: center; gap: 8px; color: var(--muted); }
+#sp-guesses li.top { color: var(--text); font-weight: 500; }
+#sp-guesses li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sp-guesses li b { height: 4px; border-radius: 2px; background: linear-gradient(90deg, currentColor calc(var(--p) * 100%), rgba(255,255,255,0.12) 0); }
+body.paper #sp-guesses li b { background: linear-gradient(90deg, currentColor calc(var(--p) * 100%), rgba(0,0,0,0.1) 0); }
+#sp-guesses li em { font-style: normal; text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; }
+#sp-guesses li.empty { display: block; font-size: 11.5px; }
+body.erasing #ink { cursor: cell; }
+@media (max-width: 640px) { #legend { display: none; } #sight-panel { width: calc(100% - 32px); } }
+
+/* pen state pill (top centre) */
+#pill {
+  position: fixed; top: 16px; left: 50%; transform: translate(-50%, -8px);
+  padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 500; white-space: nowrap;
+  background: rgba(16, 18, 22, 0.6); color: var(--ink, #fff); border: 1px solid color-mix(in srgb, var(--ink, #fff) 40%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  opacity: 0; pointer-events: none; transition: opacity 0.25s ease, transform 0.25s ease;
+}
+#pill.on { opacity: 1; transform: translate(-50%, 0); }
+body.paper #pill { background: rgba(255, 255, 255, 0.75); color: #111; }
+body.is-paused #pill.on ~ #paused, body.is-paused #paused { top: 56px; }
